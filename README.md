@@ -2,16 +2,13 @@
 
 An agentic RAG system that answers Formula 1 questions (2023-2024 seasons) by reasoning across three data sources: race documents, structured results data, and live web search.
 
-## Corpus Choice
+## Corpus
 
-**Option B — Sports Season Data (Formula 1)**
+This agent relies on the following data sources for Formula 1 information:
 
 - **Unstructured:** F1 season review articles and race analysis (formula1.com, Sky Sports, BBC Sport)
-- **Structured:** Race results for 2023-2024 seasons (919 rows, 17 columns) from the Jolpica F1 API (Ergast successor)
+- **Structured:** Race results for 2023-2024 seasons (919 rows, 17 columns) via the Jolpica F1 API
 - **Web:** Live Google Custom Search for current standings, news, and driver updates
-
-This satisfies all three requirements: unstructured text (5+ documents), a structured table (919 rows, 17 columns), and a web search use case.
-
 ## Setup
 
 ```bash
