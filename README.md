@@ -1,4 +1,4 @@
-# F1 Agentic RAG 🏎️💨
+# F1 Agentic RAG 
 
 > An intelligent, autonomous Agentic Retrieval-Augmented Generation (RAG) system designed to answer complex Formula 1 questions across the 2023–2024 seasons. 
 
@@ -6,7 +6,7 @@ Unlike standard RAG pipelines, this system features a custom reasoning loop that
 
 ---
 
-## 🧠 Core Architecture & Data Corpus
+##  Core Architecture & Data Corpus
 
 Our agent makes decisions based on three curated F1 data pipelines:
 
@@ -23,7 +23,7 @@ Our agent makes decisions based on three curated F1 data pipelines:
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 
 | Architecture Component | Technology Stack |
 | :--- | :--- |
@@ -36,7 +36,7 @@ Our agent makes decisions based on three curated F1 data pipelines:
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 Follow these instructions to get your local F1 RAG agent up and running in minutes.
 
@@ -78,7 +78,7 @@ python -m indexing.embed_docs
 
 ---
 
-## 🎯 Usage & Evaluation
+##  Usage & Evaluation
 
 Initialize the agent to answer varying levels of complex questions.
 
