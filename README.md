@@ -8,7 +8,8 @@ This agent relies on the following data sources for Formula 1 information:
 
 - **Unstructured:** F1 season review articles and race analysis (formula1.com, Sky Sports, BBC Sport)
 - **Structured:** Race results for 2023-2024 seasons (919 rows, 17 columns) via the Jolpica F1 API
-- **Web:** Live Google Custom Search for current standings, news, and driver updates
+- **Web:** Live Tavily search for current standings, news, and driver updates
+
 ## Setup
 
 ```bash
@@ -52,13 +53,9 @@ python -m evaluation.run_eval
 
 | Component | Technology |
 |---|---|
-| LLM | Google Gemini 3.1 Flash Lite |
-| Embeddings | Gemini Embedding 2 |
+| LLM | Google Gemini 2.0 Flash Lite |
+| Embeddings | Gemini Embedding |
 | Vector Store | ChromaDB (local) |
 | Structured Data | SQLite via pandas |
-| Web Search | Google Custom Search API |
+| Web Search | Tavily API |
 | Agent Loop | Custom Python (no frameworks) |
-
-## AI Disclosure
-
-AI coding assistants were used during development. All architecture decisions and design choices are my own and I can explain every line.
