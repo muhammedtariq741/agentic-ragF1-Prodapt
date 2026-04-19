@@ -17,9 +17,9 @@ class WebSearchTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search the live web for current F1 information. Use for: "
-            "current standings, live results, breaking news, recent events, "
-            "anything not in the local database or documents."
+            "Search the live web for current F1 information via Tavily. "
+            "USE THIS FOR: Breaking news, real-time standings, recent events outside 2023-2024, or fallback when local data/documents fail. "
+            "DO NOT USE THIS FOR: First-pass data retrieval for 2023-2024. ALWAYS try `query_data` and `search_docs` first for those seasons!"
         )
 
     def run(self, query: str, max_results: int = 3) -> str:

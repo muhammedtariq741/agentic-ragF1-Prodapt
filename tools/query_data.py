@@ -51,8 +51,9 @@ class QueryDataTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Query structured F1 race results (2023-2024). Use for stats, "
-            "standings, race counts, points, grid positions, constructors."
+            "Query structured F1 race results (2023-2024). "
+            "USE THIS FOR: Hard numerical statistics, standings, driver points, race counts, grid/finish positions, and constructor performance. "
+            "DO NOT USE THIS FOR: Explanations of 'why' a driver won/lost, subjective opinions, team strategies, track conditions, or events occurring outside the 2023-2024 seasons."
         )
 
     def run(self, query: str) -> str:
