@@ -122,119 +122,61 @@ class F1Agent:
         )
 
     def run(self, question: str) -> dict:
-        """
-        Run the agent loop for a single question.
-
-        Returns:
-            dict with keys: question, answer, citations, trace, steps_used
-        """
+        """Run the agent loop for a single question (max 8 steps)."""
         trace = []
-        # Build conversation as a list of content strings
-        conversation = [
-            self.system_prompt,
-            f"\nUser question: {question}\n\nRespond with JSON.",
-        ]
+        conversation = [self.system_prompt, f"\nUser question: {question}\n\nRespond with JSON."]
 
         for step in range(1, self.MAX_STEPS + 1):
-            # Call the LLM (with retry for rate limits)
+            # 1. Call LLM with basic retry
             raw_text = None
-            for attempt in range(3):
+            for _ in range(3):
                 try:
-                    response = self.model.generate_content("\n".join(conversation))
-                    raw_text = response.text.strip()
+                    raw_text = self.model.generate_content("\n".join(conversation)).text.strip()
                     break
                 except Exception as e:
-                    if "429" in str(e) and attempt < 2:
-                        wait = (attempt + 1) * 10
-                        print(f"  [Rate limited, retrying in {wait}s...]")
-                        time.sleep(wait)
-                        continue
-                    trace.append({"step": step, "error": f"LLM call failed: {e}"})
-                    break
-            if raw_text is None:
-                break
+                    if "429" in str(e): time.sleep(10)
+            if not raw_text: break
 
-            # Parse the LLM's JSON decision
+            # 2. Parse JSON decision
             try:
                 decision = parse_llm_json(raw_text)
-            except (json.JSONDecodeError, ValueError) as e:
-                trace.append({"step": step, "error": f"JSON parse failed: {e}", "raw": raw_text[:300]})
-                # Ask the LLM to retry with valid JSON
-                conversation.append(f"\n[SYSTEM ERROR: Your response was not valid JSON. Reply with ONLY a JSON object.]\n")
+                action = decision.get("action", "")
+            except Exception as e:
+                trace.append({"step": step, "error": f"Parse error: {e}", "raw": raw_text[:100]})
+                conversation.append("\n[SYSTEM ERROR: Invalid JSON. Reply with pure JSON.]\n")
                 continue
 
-            action = decision.get("action", "")
-
-            # --- AUTO-CORRECT: LLM put tool name in "action" instead of using "tool_call" ---
+            # 3. Auto-correct missing 'tool_call' syntax
             if action in self.tools:
-                decision["tool"] = action
-                decision["action"] = "tool_call"
+                decision.update({"tool": action, "action": "tool_call"})
                 action = "tool_call"
 
-            # ---- FINAL ANSWER ----
+            # 4. Route Action
             if action == "final_answer":
-                answer = decision.get("answer", "No answer provided.")
-                citations = decision.get("citations", "None")
-                return {
-                    "question": question,
-                    "answer": answer,
-                    "citations": citations,
-                    "trace": trace,
-                    "steps_used": step,
-                }
-
-            # ---- TOOL CALL ----
-            if action == "tool_call":
-                tool_name = decision.get("tool", "")
-                tool_input = decision.get("input", "")
-
-                if tool_name not in self.tools:
-                    error_msg = f"Unknown tool '{tool_name}'. Available: {list(self.tools.keys())}"
-                    trace.append({"step": step, "error": error_msg})
-                    conversation.append(f"\n[SYSTEM ERROR: {error_msg}]\n")
+                return {"question": question, "answer": decision.get("answer", "None"), 
+                        "citations": decision.get("citations", "None"), "trace": trace, "steps_used": step}
+            
+            elif action == "tool_call":
+                t_name, t_input = decision.get("tool", ""), decision.get("input", "")
+                if t_name not in self.tools:
+                    trace.append({"step": step, "error": f"Unknown tool '{t_name}'"})
+                    conversation.append(f"\n[SYSTEM ERROR: Unknown tool '{t_name}']\n")
                     continue
+                
+                print(f"  Step {step}: tool={t_name} input='{t_input}'")
+                try: result = self.tools[t_name].run(t_input)
+                except Exception as e: result = f"ERROR: {e}"
 
-                # Execute the tool
-                tool = self.tools[tool_name]
-                print(f"  Step {step}: tool={tool_name} input='{tool_input}'")
-                try:
-                    result = tool.run(tool_input)
-                except Exception as e:
-                    result = f"ERROR: {type(e).__name__}: {e}"
+                trace.append({"step": step, "tool": t_name, "input": t_input, "result": str(result)[:300]})
+                conversation.append(f"\nTool result from {t_name}:\n{result}\n\nDecide next step (JSON).")
+            
+            else:
+                trace.append({"step": step, "error": f"Unknown action: {action}"})
+                conversation.append("\n[SYSTEM ERROR: Unknown action. Use tool_call or final_answer.]\n")
 
-                trace.append({
-                    "step": step,
-                    "tool": tool_name,
-                    "input": tool_input,
-                    "result": result[:1000],  # cap trace size
-                })
-
-                # Feed the result back into the conversation
-                conversation.append(
-                    f"\nTool result from {tool_name}:\n{result}\n\n"
-                    f"Based on this result, decide: do you have enough information to answer "
-                    f"the user's question, or do you need to call another tool? "
-                    f"Respond with JSON."
-                )
-                continue
-
-            # Unknown action
-            trace.append({"step": step, "error": f"Unknown action: {action}", "raw": raw_text[:300]})
-            conversation.append("\n[SYSTEM ERROR: Unknown action. Use 'tool_call' or 'final_answer'.]\n")
-
-        # ---- HARD CAP REACHED ----
-        return {
-            "question": question,
-            "answer": (
-                f"REFUSAL: I was unable to answer your question within the maximum "
-                f"of {self.MAX_STEPS} tool calls. This may indicate the question is "
-                f"too complex, ambiguous, or unanswerable with the available data. "
-                f"Please try rephrasing your question."
-            ),
-            "citations": "None (hard cap reached)",
-            "trace": trace,
-            "steps_used": self.MAX_STEPS,
-        }
+        # 5. Hard cap fallback
+        return {"question": question, "answer": "REFUSAL: Maximum of 8 tool calls reached.", 
+                "citations": "None", "trace": trace, "steps_used": self.MAX_STEPS}
 
 
 def print_trace(result: dict):
