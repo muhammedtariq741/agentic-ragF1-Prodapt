@@ -28,14 +28,14 @@ class SearchDocsTool(BaseTool):
             "DO NOT USE THIS FOR: Exact raw numerical statistics, current real-time news outside of 2023-2024, or live race results."
         )
 
-    def run(self, query: str, n_results: int = 3) -> str:
+    def run(self, query: str, n_results: int = 10) -> str:
         if not os.path.exists(VECTOR_STORE_PATH):
             return "ERROR: Vector store not found. Run 'python -m indexing.embed_docs' first."
 
         try:
             # Step 1: Embed the query
             embedding_result = genai.embed_content(
-                model="models/gemini-embedding-exp-03-07",
+                model="models/gemini-embedding-001",
                 content=query,
                 task_type="retrieval_query",
             )

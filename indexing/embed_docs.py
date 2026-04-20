@@ -65,7 +65,7 @@ def embed_documents():
     for i in range(0, len(all_chunks), batch_size):
         batch = all_chunks[i:i + batch_size]
         result = genai.embed_content(
-            model="models/gemini-embedding-exp-03-07",
+            model="models/gemini-embedding-001",
             content=batch,
             task_type="retrieval_document",
         )
@@ -79,7 +79,7 @@ def embed_documents():
     # Delete existing collection if it exists
     try:
         client.delete_collection(COLLECTION_NAME)
-    except ValueError:
+    except Exception:
         pass
 
     collection = client.create_collection(COLLECTION_NAME)
