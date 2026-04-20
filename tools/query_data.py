@@ -33,11 +33,39 @@ Columns:
   fastest_lap_rank (TEXT)
   fastest_lap_time (TEXT)
 
+F1 Location Mapping (users may refer to a race by ANY of these names):
+  "Abu Dhabi" / "Yas Marina"                  → grand_prix = "Abu Dhabi Grand Prix", circuit = "Yas Marina Circuit"
+  "Australia" / "Melbourne" / "Albert Park"    → grand_prix = "Australian Grand Prix", circuit = "Albert Park Grand Prix Circuit"
+  "Austria" / "Spielberg" / "Red Bull Ring"    → grand_prix = "Austrian Grand Prix", circuit = "Red Bull Ring"
+  "Azerbaijan" / "Baku"                        → grand_prix = "Azerbaijan Grand Prix", circuit = "Baku City Circuit"
+  "Bahrain" / "Sakhir"                         → grand_prix = "Bahrain Grand Prix", circuit = "Bahrain International Circuit"
+  "Belgium" / "Spa" / "Spa-Francorchamps"      → grand_prix = "Belgian Grand Prix", circuit = "Circuit de Spa-Francorchamps"
+  "Britain" / "UK" / "Silverstone"             → grand_prix = "British Grand Prix", circuit = "Silverstone Circuit"
+  "Canada" / "Montreal"                        → grand_prix = "Canadian Grand Prix", circuit = "Circuit Gilles Villeneuve"
+  "China" / "Shanghai"                         → grand_prix = "Chinese Grand Prix", circuit = "Shanghai International Circuit"
+  "Netherlands" / "Dutch" / "Zandvoort"        → grand_prix = "Dutch Grand Prix", circuit = "Circuit Park Zandvoort"
+  "Emilia Romagna" / "Imola"                   → grand_prix = "Emilia Romagna Grand Prix", circuit = "Autodromo Enzo e Dino Ferrari"
+  "Hungary" / "Budapest" / "Hungaroring"       → grand_prix = "Hungarian Grand Prix", circuit = "Hungaroring"
+  "Italy" / "Monza"                            → grand_prix = "Italian Grand Prix", circuit = "Autodromo Nazionale di Monza"
+  "Japan" / "Suzuka"                           → grand_prix = "Japanese Grand Prix", circuit = "Suzuka Circuit"
+  "Las Vegas" / "Vegas"                        → grand_prix = "Las Vegas Grand Prix", circuit = "Las Vegas Strip Street Circuit"
+  "Mexico" / "Mexico City"                     → grand_prix = "Mexico City Grand Prix", circuit = "Autódromo Hermanos Rodríguez"
+  "Miami"                                      → grand_prix = "Miami Grand Prix", circuit = "Miami International Autodrome"
+  "Monaco" / "Monte Carlo"                     → grand_prix = "Monaco Grand Prix", circuit = "Circuit de Monaco"
+  "Qatar" / "Lusail" / "Losail"                → grand_prix = "Qatar Grand Prix", circuit = "Losail International Circuit"
+  "Saudi Arabia" / "Jeddah"                    → grand_prix = "Saudi Arabian Grand Prix", circuit = "Jeddah Corniche Circuit"
+  "Singapore" / "Marina Bay"                   → grand_prix = "Singapore Grand Prix", circuit = "Marina Bay Street Circuit"
+  "Spain" / "Barcelona" / "Catalunya"           → grand_prix = "Spanish Grand Prix", circuit = "Circuit de Barcelona-Catalunya"
+  "Brazil" / "São Paulo" / "Sao Paulo" / "Interlagos" → grand_prix = "São Paulo Grand Prix", circuit = "Autódromo José Carlos Pace"
+  "USA" / "Austin" / "COTA"                    → grand_prix = "United States Grand Prix", circuit = "Circuit of the Americas"
+
 Rules:
 - Return ONLY the raw SQL query, no markdown, no explanation.
 - Use LIKE for partial text matching (e.g., driver LIKE '%Verstappen%').
+- When a user mentions a location, track, city, or country, use the mapping above to match against the EXACT grand_prix or circuit value. Always check BOTH columns using OR.
 - For "wins", use finish_position = 1.
 - Always include relevant columns in SELECT for context.
+- Note: "Monza" refers to the Italian GP, NOT Imola. "Imola" is the Emilia Romagna GP. These are two different races in Italy.
 """
 
 
@@ -62,11 +90,14 @@ class QueryDataTool(BaseTool):
 
         try:
             # Step 1: LLM generates SQL
-            model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(
                 f"{SCHEMA_PROMPT}\n\nUser question: {query}"
             )
-            sql = response.text.strip().strip("`").replace("sql\n", "").replace("sql", "", 1).strip()
+            sql = response.text.strip()
+            if sql.startswith("```"):
+                sql = "\n".join(sql.split("\n")[1:-1])
+            sql = sql.strip()
             print(f"  [query_data] SQL: {sql}")
 
             # Step 2: Execute SQL
