@@ -1,5 +1,6 @@
 """Tool 1: Query structured F1 race data via natural language to SQL."""
 import os
+import re
 import sqlite3
 
 import google.generativeai as genai
@@ -88,17 +89,55 @@ class QueryDataTool(BaseTool):
         if not os.path.exists(DB_PATH):
             return "ERROR: Database not found. Run 'python -m indexing.load_data' first."
 
+
+
         try:
+            # Step 0: Resolve location aliases locally (avoid LLM dependency for simple mappings)
+            ALIAS_MAP = {
+                "spa": "Belgian Grand Prix at Circuit de Spa-Francorchamps",
+                "silverstone": "British Grand Prix at Silverstone Circuit",
+                "monza": "Italian Grand Prix at Autodromo Nazionale di Monza",
+                "imola": "Emilia Romagna Grand Prix at Autodromo Enzo e Dino Ferrari",
+                "baku": "Azerbaijan Grand Prix at Baku City Circuit",
+                "jeddah": "Saudi Arabian Grand Prix at Jeddah Corniche Circuit",
+                "monaco": "Monaco Grand Prix at Circuit de Monaco",
+                "suzuka": "Japanese Grand Prix at Suzuka Circuit",
+                "interlagos": "São Paulo Grand Prix at Autódromo José Carlos Pace",
+                "zandvoort": "Dutch Grand Prix at Circuit Park Zandvoort",
+                "marina bay": "Singapore Grand Prix at Marina Bay Street Circuit",
+                "albert park": "Australian Grand Prix at Albert Park Grand Prix Circuit",
+                "melbourne": "Australian Grand Prix at Albert Park Grand Prix Circuit",
+                "vegas": "Las Vegas Grand Prix at Las Vegas Strip Street Circuit",
+                "las vegas": "Las Vegas Grand Prix at Las Vegas Strip Street Circuit",
+                "cota": "United States Grand Prix at Circuit of the Americas",
+                "austin": "United States Grand Prix at Circuit of the Americas",
+                "hungaroring": "Hungarian Grand Prix at Hungaroring",
+                "budapest": "Hungarian Grand Prix at Hungaroring",
+                "barcelona": "Spanish Grand Prix at Circuit de Barcelona-Catalunya",
+                "montreal": "Canadian Grand Prix at Circuit Gilles Villeneuve",
+                "lusail": "Qatar Grand Prix at Losail International Circuit",
+                "yas marina": "Abu Dhabi Grand Prix at Yas Marina Circuit",
+                "red bull ring": "Austrian Grand Prix at Red Bull Ring",
+                "spielberg": "Austrian Grand Prix at Red Bull Ring",
+            }
+            enriched_query = query
+            for alias, full_name in ALIAS_MAP.items():
+                if alias.lower() in query.lower():
+                    enriched_query = f"{query} (Note: '{alias}' refers to the {full_name})"
+                    break
+
             # Step 1: LLM generates SQL
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(
-                f"{SCHEMA_PROMPT}\n\nUser question: {query}"
+                f"{SCHEMA_PROMPT}\n\nUser question: {enriched_query}"
             )
             sql = response.text.strip()
             if sql.startswith("```"):
                 sql = "\n".join(sql.split("\n")[1:-1])
             sql = sql.strip()
             print(f"  [query_data] SQL: {sql}")
+
+
 
             # Step 2: Execute SQL
             conn = sqlite3.connect(DB_PATH)
@@ -114,8 +153,8 @@ class QueryDataTool(BaseTool):
             # Step 3: Format results
             result_lines = [" | ".join(columns)]
             result_lines.append("-" * len(result_lines[0]))
-            for row in rows[:25]:  # Cap at 25 rows
-                result_lines.append(" | ".join(str(v) for v in row))
+            for idx, row in enumerate(rows[:25], start=1):  # Cap at 25 rows
+                result_lines.append(f"Row {idx}: " + " | ".join(str(v) for v in row))
 
             return f"SQL: {sql}\nResults ({len(rows)} rows):\n" + "\n".join(result_lines)
 
