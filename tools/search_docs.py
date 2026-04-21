@@ -28,7 +28,7 @@ class SearchDocsTool(BaseTool):
             "DO NOT USE THIS FOR: Exact raw numerical statistics, current real-time news outside of 2023-2024, or live race results."
         )
 
-    def run(self, query: str, n_results: int = 10) -> str:
+    def run(self, query: str, n_results: int = 3) -> str:
         if not os.path.exists(VECTOR_STORE_PATH):
             return "ERROR: Vector store not found. Run 'python -m indexing.embed_docs' first."
 
@@ -43,7 +43,10 @@ class SearchDocsTool(BaseTool):
 
             # Step 2: Search ChromaDB
             client = chromadb.PersistentClient(path=VECTOR_STORE_PATH)
-            collection = client.get_collection(COLLECTION_NAME)
+            try:
+                collection = client.get_collection(COLLECTION_NAME)
+            except Exception:
+                return f"ERROR: Collection '{COLLECTION_NAME}' not found. Run 'python -m indexing.embed_docs' first."
             results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
@@ -59,8 +62,11 @@ class SearchDocsTool(BaseTool):
             ):
                 source = meta.get("source", "unknown")
                 chunk_id = meta.get("chunk_id", "?")
+                doc_text = doc.strip()
+                if len(doc_text) > 800:
+                    doc_text = doc_text[:800] + "... [truncated]"
                 output_parts.append(
-                    f"[Source: {source} | Chunk: {chunk_id}]\n{doc.strip()}"
+                    f"[Source: {source} | Chunk: {chunk_id}]\n{doc_text}"
                 )
 
             return "\n\n---\n\n".join(output_parts)
