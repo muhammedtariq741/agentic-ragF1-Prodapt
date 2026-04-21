@@ -45,8 +45,11 @@ class WebSearchTool(BaseTool):
             for r in results:
                 title = r.get("title", "No title")
                 content = r.get("content", "No content")
+                if len(content) > 500:
+                    content = content[:500] + "..."
                 url = r.get("url", "")
-                output_parts.append(f"**{title}**\n{content}\nURL: {url}")
+                pub_date = r.get("published_date", "Date unknown")
+                output_parts.append(f"**{title}**\n{content}\nURL: {url}\nPublished: {pub_date}")
 
             return "\n\n---\n\n".join(output_parts)
 
