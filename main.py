@@ -14,7 +14,7 @@ import re
 import sys
 import time
 
-import google.generativeai as genai
+from utils.llm import generate_llm_response
 from dotenv import load_dotenv
 
 from tools.query_data import QueryDataTool
@@ -22,7 +22,6 @@ from tools.search_docs import SearchDocsTool
 from tools.web_search import WebSearchTool
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ---------------------------------------------------------------------------
 # System prompt — injected once at the start of every conversation
@@ -32,15 +31,32 @@ SYSTEM_PROMPT = """You are an expert Formula 1 assistant. You have access to thr
 TOOLS:
 {tool_descriptions}
 
+DATABASE SCHEMA (for query_data tool):
+Table: race_results
+Columns: season (INT, 2023 or 2024), round (INT), grand_prix (TEXT, e.g. "Bahrain Grand Prix"), circuit (TEXT), date (TEXT), driver (TEXT, full name), driver_code (TEXT, 3-letter), driver_nationality (TEXT), constructor (TEXT, team name), grid_position (INT), finish_position (INT, 1=winner), position_text (TEXT, "1" or "R" for retired), points (REAL), laps_completed (INT), status (TEXT), fastest_lap_rank (TEXT), fastest_lap_time (TEXT)
+
+F1 Location Mapping:
+  "Abu Dhabi"/"Yas Marina" → grand_prix="Abu Dhabi Grand Prix" | "Australia"/"Melbourne" → "Australian Grand Prix" | "Austria"/"Spielberg" → "Austrian Grand Prix" | "Azerbaijan"/"Baku" → "Azerbaijan Grand Prix" | "Bahrain" → "Bahrain Grand Prix" | "Belgium"/"Spa" → "Belgian Grand Prix" | "Britain"/"Silverstone" → "British Grand Prix" | "Canada"/"Montreal" → "Canadian Grand Prix" | "China"/"Shanghai" → "Chinese Grand Prix" | "Netherlands"/"Zandvoort" → "Dutch Grand Prix" | "Imola" → "Emilia Romagna Grand Prix" | "Hungary"/"Budapest" → "Hungarian Grand Prix" | "Italy"/"Monza" → "Italian Grand Prix" | "Japan"/"Suzuka" → "Japanese Grand Prix" | "Las Vegas" → "Las Vegas Grand Prix" | "Mexico" → "Mexico City Grand Prix" | "Miami" → "Miami Grand Prix" | "Monaco" → "Monaco Grand Prix" | "Qatar"/"Lusail" → "Qatar Grand Prix" | "Saudi Arabia"/"Jeddah" → "Saudi Arabian Grand Prix" | "Singapore" → "Singapore Grand Prix" | "Spain"/"Barcelona" → "Spanish Grand Prix" | "Brazil"/"Interlagos" → "São Paulo Grand Prix" | "USA"/"Austin"/"COTA" → "United States Grand Prix"
+
 RESPONSE FORMAT — you MUST reply with valid JSON, nothing else.
 
 Every time you respond, you MUST use the following format. First, use a "scratchpad" to reflect on previous tool results and plan your next step. Then, provide your action.
 
-To call a tool:
-{{"scratchpad": {{"known": {{"fact_name": {{"value": "...", "source": "tool_name", "confidence": "high|medium|low"}}}}, "missing": ["list of facts still needed"], "conflicts": []}}, "action": "tool_call", "tool": "<tool_name>", "input": "<natural language query for the tool>"}}
+To call query_data, pass a raw SQL SELECT query as the input:
+{{"scratchpad": {{"known": {{...}}, "missing": [...], "conflicts": []}}, "action": "tool_call", "tool": "query_data", "input": "SELECT driver, points FROM race_results WHERE grand_prix = 'Miami Grand Prix' AND season = 2024"}}
+
+To call search_docs or web_search, pass a natural language query:
+{{"scratchpad": {{"known": {{...}}, "missing": [...], "conflicts": []}}, "action": "tool_call", "tool": "search_docs", "input": "why did Norris win Miami 2024"}}
 
 To give the final answer (after you have enough information):
 {{"scratchpad": {{"known": {{...}}, "missing": [], "conflicts": []}}, "action": "final_answer", "answer": "<your answer text>", "citations": "<which tools/sources provided the info>"}}
+
+SQL RULES for query_data:
+- ONLY generate SELECT queries. No DROP, DELETE, UPDATE, INSERT.
+- Use LIKE for partial text matching (e.g., driver LIKE '%Verstappen%').
+- Use the location mapping above to match grand_prix values exactly.
+- For "wins", use finish_position = 1.
+- "Monza" = Italian GP, "Imola" = Emilia Romagna GP (different races).
 
 RULES:
 1. Think step-by-step. Call ONE tool at a time.
@@ -116,7 +132,6 @@ class F1Agent:
             t.name: t
             for t in [QueryDataTool(), SearchDocsTool(), WebSearchTool()]
         }
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.system_prompt = SYSTEM_PROMPT.format(
             tool_descriptions=build_tool_descriptions(self.tools)
         )
@@ -131,14 +146,15 @@ class F1Agent:
         for step in range(1, 50):
             # 1. Call LLM with basic retry
             raw_text = None
-            for _ in range(3):
-                try:
-                    raw_text = self.model.generate_content("\n".join(conversation)).text.strip()
-                    break
-                except Exception as e:
-                    if "429" in str(e): time.sleep(10)
+            try:
+                user_content = "\n".join(conversation[1:])
+                raw_text = generate_llm_response(self.system_prompt, user_content)
+            except Exception as e:
+                trace.append({"step": step, "state": "ERROR", "error": f"LLM error: {e}"})
+                raw_text = None
+                
             if not raw_text:
-                return {"question": question, "answer": "ERROR: LLM failed to respond after 3 attempts.", 
+                return {"question": question, "answer": "ERROR: LLM failed to respond.",  
                         "citations": "None", "trace": trace, "steps_used": tool_call_count}
 
             # 2. Parse JSON decision and State Tracker

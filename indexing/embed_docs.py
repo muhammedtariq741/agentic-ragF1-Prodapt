@@ -2,11 +2,9 @@
 import os
 
 import chromadb
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 DOCS_DIR = "data/documents"
 VECTOR_STORE_PATH = "data/vector_store"
@@ -59,18 +57,7 @@ def embed_documents():
 
     # Embed all chunks
     print(f"\nEmbedding {len(all_chunks)} chunks...")
-    embeddings = []
-    batch_size = 50  # Gemini API batch limit
-
-    for i in range(0, len(all_chunks), batch_size):
-        batch = all_chunks[i:i + batch_size]
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=batch,
-            task_type="retrieval_document",
-        )
-        embeddings.extend(result["embedding"])
-        print(f"  Embedded {min(i + batch_size, len(all_chunks))}/{len(all_chunks)}")
+    # ChromaDB will automatically embed these locally using sentence-transformers!
 
     # Store in ChromaDB
     print(f"\nStoring in ChromaDB at {VECTOR_STORE_PATH}...")
@@ -85,7 +72,6 @@ def embed_documents():
     collection = client.create_collection(COLLECTION_NAME)
     collection.add(
         documents=all_chunks,
-        embeddings=embeddings,
         metadatas=all_metadata,
         ids=all_ids,
     )

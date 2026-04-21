@@ -1,20 +1,7 @@
-# LLM & Embeddings
-google-generativeai>=0.8.0
-
-# Vector Store
-chromadb>=0.5.0
-
-# Structured Data
-pandas>=2.0.0
-
-# Document Processing
-pypdf>=4.0.0
-
-# Web Search (recommended by assignment — designed for LLM agents)
-tavily-python>=0.5.0
-
-# Environment Variables
-python-dotenv>=1.0.0
-
-# HTTP
-requests>=2.31.0
+groq
+chromadb
+tavily-python
+pandas
+requests
+python-dotenv
+sentence-transformers

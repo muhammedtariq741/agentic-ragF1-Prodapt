@@ -2,13 +2,11 @@
 import os
 import re
 import sqlite3
-
-import google.generativeai as genai
+from utils.llm import generate_llm_response
 from dotenv import load_dotenv
 from tools.base import BaseTool
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 DB_PATH = "data/structured/f1_results.db"
 
@@ -130,12 +128,16 @@ class QueryDataTool(BaseTool):
                     enriched_query = f"{query} (Note: '{alias}' refers to the {full_name})"
                     break
 
-            # Step 1: LLM generates SQL
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content(
-                f"{SCHEMA_PROMPT}\n\nUser question: {enriched_query}"
-            )
-            sql = response.text.strip()
+            # Step 1: Determine if input is raw SQL or natural language
+            stripped = query.strip()
+            if stripped.upper().startswith("SELECT"):
+                # Agent already generated SQL — use directly (no LLM call!)
+                sql = stripped
+            else:
+                # Fallback: LLM generates SQL from natural language
+                user_prompt = f"User question: {enriched_query}"
+                sql = generate_llm_response(SCHEMA_PROMPT, user_prompt)
+
             if sql.startswith("```"):
                 sql = "\n".join(sql.split("\n")[1:-1])
             sql = sql.strip()

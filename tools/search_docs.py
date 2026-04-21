@@ -2,12 +2,10 @@
 import os
 
 import chromadb
-import google.generativeai as genai
 from dotenv import load_dotenv
 from tools.base import BaseTool
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 VECTOR_STORE_PATH = "data/vector_store"
 COLLECTION_NAME = "f1_documents"
@@ -33,22 +31,14 @@ class SearchDocsTool(BaseTool):
             return "ERROR: Vector store not found. Run 'python -m indexing.embed_docs' first."
 
         try:
-            # Step 1: Embed the query
-            embedding_result = genai.embed_content(
-                model="models/gemini-embedding-001",
-                content=query,
-                task_type="retrieval_query",
-            )
-            query_embedding = embedding_result["embedding"]
-
-            # Step 2: Search ChromaDB
+            # Step 1: Search ChromaDB (it will embed the query automatically)
             client = chromadb.PersistentClient(path=VECTOR_STORE_PATH)
             try:
                 collection = client.get_collection(COLLECTION_NAME)
             except Exception:
                 return f"ERROR: Collection '{COLLECTION_NAME}' not found. Run 'python -m indexing.embed_docs' first."
             results = collection.query(
-                query_embeddings=[query_embedding],
+                query_texts=[query],
                 n_results=n_results,
             )
 
