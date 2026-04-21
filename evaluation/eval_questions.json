@@ -1,0 +1,142 @@
+{
+  "single_tool_questions": [
+    {
+      "id": 1,
+      "question": "How many points did Max Verstappen score in 2024?",
+      "expected_tool": "query_data",
+      "expected_answer_contains": "points",
+      "category": "single_tool"
+    },
+    {
+      "id": 2,
+      "question": "Who won the 2024 British Grand Prix?",
+      "expected_tool": "query_data",
+      "expected_answer_contains": "Hamilton",
+      "category": "single_tool"
+    },
+    {
+      "id": 3,
+      "question": "How many races did Lando Norris win in 2024?",
+      "expected_tool": "query_data",
+      "expected_answer_contains": "Norris",
+      "category": "single_tool"
+    },
+    {
+      "id": 4,
+      "question": "What was the finishing order at the 2024 Monaco Grand Prix?",
+      "expected_tool": "query_data",
+      "expected_answer_contains": "Monaco",
+      "category": "single_tool"
+    },
+    {
+      "id": 5,
+      "question": "What was Red Bull's team strategy during the 2024 Hungarian Grand Prix?",
+      "expected_tool": "search_docs",
+      "expected_answer_contains": "strategy",
+      "category": "single_tool"
+    },
+    {
+      "id": 6,
+      "question": "What were the key storylines from the 2024 season?",
+      "expected_tool": "search_docs",
+      "expected_answer_contains": "season",
+      "category": "single_tool"
+    }
+  ],
+  "multi_tool_questions": [
+    {
+      "id": 7,
+      "question": "How many podiums did Lewis Hamilton get in 2024, and what was notable about his race at Silverstone?",
+      "expected_tools": ["query_data", "search_docs"],
+      "expected_answer_contains": "Hamilton",
+      "category": "multi_tool"
+    },
+    {
+      "id": 8,
+      "question": "Compare Verstappen's total points in 2023 vs 2024 and explain why his dominance decreased.",
+      "expected_tools": ["query_data", "search_docs"],
+      "expected_answer_contains": "Verstappen",
+      "category": "multi_tool"
+    },
+    {
+      "id": 9,
+      "question": "How did McLaren perform in the 2024 constructors standings, and what was their development strategy?",
+      "expected_tools": ["query_data", "search_docs"],
+      "expected_answer_contains": "McLaren",
+      "category": "multi_tool"
+    },
+    {
+      "id": 10,
+      "question": "Who won the 2024 Brazilian Grand Prix and what were the race conditions like?",
+      "expected_tools": ["query_data", "search_docs"],
+      "expected_answer_contains": "Brazil",
+      "category": "multi_tool"
+    },
+    {
+      "id": 11,
+      "question": "What are the latest F1 driver standings and how do they compare to our 2024 data?",
+      "expected_tools": ["query_data", "web_search"],
+      "expected_answer_contains": "standings",
+      "category": "multi_tool"
+    },
+    {
+      "id": 12,
+      "question": "How many wins did Ferrari get in 2024 and what's their current 2025 form?",
+      "expected_tools": ["query_data", "web_search"],
+      "expected_answer_contains": "Ferrari",
+      "category": "multi_tool"
+    }
+  ],
+  "refusal_questions": [
+    {
+      "id": 13,
+      "question": "Which F1 team should I invest in?",
+      "expected_behavior": "Refuse politely — investment advice is outside capability",
+      "category": "refusal"
+    },
+    {
+      "id": 14,
+      "question": "Who will win the 2026 Formula 1 World Championship?",
+      "expected_behavior": "Refuse — cannot predict future outcomes",
+      "category": "refusal"
+    },
+    {
+      "id": 15,
+      "question": "Is Max Verstappen the GOAT of Formula 1?",
+      "expected_behavior": "Refuse — subjective personal opinion",
+      "category": "refusal"
+    },
+    {
+      "id": 16,
+      "question": "Write me a Python script to scrape F1 data from the FIA website.",
+      "expected_behavior": "Refuse — code generation is outside capability",
+      "category": "refusal"
+    }
+  ],
+  "edge_cases": [
+    {
+      "id": 17,
+      "question": "What happened in the 2019 German Grand Prix?",
+      "expected_behavior": "Honest refusal — data only covers 2023-2024 seasons",
+      "category": "edge_case"
+    },
+    {
+      "id": 18,
+      "question": "What is 2 + 2?",
+      "expected_behavior": "Answer directly (4) without calling any tools",
+      "category": "edge_case"
+    },
+    {
+      "id": 19,
+      "question": "Tell me about the 2024 Monaco Grand Prix strategy AND who won AND what the latest news is about that circuit.",
+      "expected_behavior": "Uses multiple tools sequentially, synthesizes a combined answer",
+      "category": "edge_case"
+    },
+    {
+      "id": 20,
+      "question": "",
+      "expected_behavior": "Handle empty input gracefully without crashing",
+      "category": "edge_case"
+    }
+  ]
+}
