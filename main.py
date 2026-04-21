@@ -34,11 +34,13 @@ TOOLS:
 
 RESPONSE FORMAT — you MUST reply with valid JSON, nothing else.
 
+Every time you respond, you MUST use the following format. First, use a "scratchpad" to reflect on previous tool results and plan your next step. Then, provide your action.
+
 To call a tool:
-{{"action": "tool_call", "tool": "<tool_name>", "input": "<natural language query for the tool>"}}
+{{"scratchpad": {{"known": {{"fact_name": {{"value": "...", "source": "tool_name", "confidence": "high|medium|low"}}}}, "missing": ["list of facts still needed"], "conflicts": []}}, "action": "tool_call", "tool": "<tool_name>", "input": "<natural language query for the tool>"}}
 
 To give the final answer (after you have enough information):
-{{"action": "final_answer", "answer": "<your answer text>", "citations": "<which tools/sources provided the info>"}}
+{{"scratchpad": {{"known": {{...}}, "missing": [], "conflicts": []}}, "action": "final_answer", "answer": "<your answer text>", "citations": "<which tools/sources provided the info>"}}
 
 RULES:
 1. Think step-by-step. Call ONE tool at a time.
@@ -92,16 +94,14 @@ def parse_llm_json(text: str) -> dict:
     input_m = re.search(r'"input"\s*:\s*"([^"]+)"', raw)
     answer_m = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
     citations_m = re.search(r'"citations"\s*:\s*"([^"]+)"', raw)
+    scratchpad_m = re.search(r'"scratchpad"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
     if action_m:
         result = {"action": action_m.group(1)}
-        if tool_m:
-            result["tool"] = tool_m.group(1)
-        if input_m:
-            result["input"] = input_m.group(1)
-        if answer_m:
-            result["answer"] = answer_m.group(1)
-        if citations_m:
-            result["citations"] = citations_m.group(1)
+        if tool_m: result["tool"] = tool_m.group(1)
+        if input_m: result["input"] = input_m.group(1)
+        if answer_m: result["answer"] = answer_m.group(1)
+        if citations_m: result["citations"] = citations_m.group(1)
+        if scratchpad_m: result["scratchpad"] = scratchpad_m.group(1)
         return result
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}")
 
@@ -124,9 +124,11 @@ class F1Agent:
     def run(self, question: str) -> dict:
         """Run the agent loop for a single question (max 8 steps)."""
         trace = []
+        tool_call_count = 0
+        memory = {"known": {}, "missing": [], "conflicts": []}
         conversation = [self.system_prompt, f"\nUser question: {question}\n\nRespond with JSON."]
 
-        for step in range(1, self.MAX_STEPS + 1):
+        for step in range(1, 50):
             # 1. Call LLM with basic retry
             raw_text = None
             for _ in range(3):
@@ -135,14 +137,24 @@ class F1Agent:
                     break
                 except Exception as e:
                     if "429" in str(e): time.sleep(10)
-            if not raw_text: break
+            if not raw_text:
+                return {"question": question, "answer": "ERROR: LLM failed to respond after 3 attempts.", 
+                        "citations": "None", "trace": trace, "steps_used": tool_call_count}
 
-            # 2. Parse JSON decision
+            # 2. Parse JSON decision and State Tracker
             try:
                 decision = parse_llm_json(raw_text)
                 action = decision.get("action", "")
+                scratchpad = decision.get("scratchpad", {})
+                if isinstance(scratchpad, dict):
+                    # Merge LLM's structured memory into our running memory
+                    for k, v in scratchpad.get("known", {}).items():
+                        memory["known"][k] = v
+                    memory["missing"] = scratchpad.get("missing", memory["missing"])
+                    memory["conflicts"] = scratchpad.get("conflicts", memory["conflicts"])
+                trace.append({"step": step, "state": "REFLECT & PLAN", "memory": memory.copy()})
             except Exception as e:
-                trace.append({"step": step, "error": f"Parse error: {e}", "raw": raw_text[:100]})
+                trace.append({"step": step, "state": "ERROR", "error": f"Parse error: {e}", "raw": raw_text[:100]})
                 conversation.append("\n[SYSTEM ERROR: Invalid JSON. Reply with pure JSON.]\n")
                 continue
 
@@ -153,8 +165,11 @@ class F1Agent:
 
             # 4. Route Action
             if action == "final_answer":
+                grounded = [f"{e['tool']} (input: '{e['input']}')" 
+                            for e in trace if e.get("state") == "ACT"]
+                grounded_str = "; ".join(grounded) if grounded else "None"
                 return {"question": question, "answer": decision.get("answer", "None"), 
-                        "citations": decision.get("citations", "None"), "trace": trace, "steps_used": step}
+                        "citations": grounded_str + " | LLM note: " + decision.get("citations", ""), "trace": trace, "steps_used": tool_call_count}
             
             elif action == "tool_call":
                 t_name, t_input = decision.get("tool", ""), decision.get("input", "")
@@ -163,21 +178,25 @@ class F1Agent:
                     conversation.append(f"\n[SYSTEM ERROR: Unknown tool '{t_name}']\n")
                     continue
                 
+                if tool_call_count >= self.MAX_STEPS:
+                    trace.append({"step": step, "state": "ERROR", "error": "Hard cap reached"})
+                    break
+                tool_call_count += 1
+                
                 print(f"  Step {step}: tool={t_name} input='{t_input}'")
                 try: result = self.tools[t_name].run(t_input)
                 except Exception as e: result = f"ERROR: {e}"
 
-                trace.append({"step": step, "tool": t_name, "input": t_input, "result": str(result)[:300]})
-                conversation.append(f"\nTool result from {t_name}:\n{result}\n\nDecide next step (JSON).")
+                trace.append({"step": step, "state": "ACT", "tool": t_name, "input": t_input, "result": str(result)[:300]})
+                conversation.append(f"\nTool result from {t_name}:\n{result}\n\nCurrent memory state: {json.dumps(memory)}\nReview the data. Update your scratchpad memory (known/missing/conflicts). Respond with JSON.")
             
             else:
-                trace.append({"step": step, "error": f"Unknown action: {action}"})
+                trace.append({"step": step, "state": "ERROR", "error": f"Unknown action: {action}"})
                 conversation.append("\n[SYSTEM ERROR: Unknown action. Use tool_call or final_answer.]\n")
 
         # 5. Hard cap fallback
         return {"question": question, "answer": "REFUSAL: Maximum of 8 tool calls reached.", 
-                "citations": "None", "trace": trace, "steps_used": self.MAX_STEPS}
-
+                "citations": "None", "trace": trace, "steps_used": tool_call_count}
 
 def print_trace(result: dict):
     """Pretty-print the agent trace in the assignment-required format."""
@@ -186,18 +205,37 @@ def print_trace(result: dict):
     print("-" * 70)
     for entry in result["trace"]:
         step = entry.get("step", "?")
-        if "tool" in entry:
-            print(f"  Step {step}: tool={entry['tool']} input='{entry['input']}'")
-            # Show first 200 chars of result
-            preview = entry["result"][:200].replace("\n", " ")
+        state = entry.get("state", "?")
+        if state == "REFLECT & PLAN":
+            mem = entry.get("memory", {})
+            known_count = len(mem.get("known", {}))
+            missing = mem.get("missing", [])
+            conflicts = mem.get("conflicts", [])
+            print(f"  Step {step} [{state}]: known={known_count} facts, missing={missing}")
+            if conflicts:
+                print(f"           conflicts={conflicts}")
+        elif state == "ACT":
+            print(f"  Step {step} [{state}]: tool={entry.get('tool')} input='{entry.get('input')}'")
+            preview = entry.get('result', '')[:200].replace("\n", " ")
             print(f"           result={preview}...")
-        elif "error" in entry:
-            print(f"  Step {step}: ERROR — {entry['error']}")
+        elif state == "ERROR":
+            print(f"  Step {step} [ERROR]: {entry.get('error')}")
     print("-" * 70)
     print(f"Final Answer: {result['answer']}")
     print(f"Citations: {result['citations']}")
     print(f"Steps used: {result['steps_used']} / {F1Agent.MAX_STEPS} max")
     print("=" * 70)
+
+
+def print_trace_simple(result: dict):
+    """Compact trace format for evaluation reports and PDF export."""
+    print(f"\nQ: {result['question']}")
+    tools_used = [e.get("tool") for e in result["trace"] if e.get("state") == "ACT"]
+    print(f"Tools: {', '.join(tools_used) if tools_used else 'None (direct answer)'}")
+    print(f"Steps: {result['steps_used']}/{F1Agent.MAX_STEPS}")
+    print(f"Answer: {result['answer'][:300]}")
+    print(f"Citations: {result['citations']}")
+    print()
 
 
 def main():

@@ -6,15 +6,16 @@ from main import F1Agent, parse_llm_json
 
 def test_parse_llm_json_standard():
     """Test parsing a perfectly formatted JSON string."""
-    text = '{"action": "tool_call", "tool": "query_data", "input": "test"}'
+    text = '{"scratchpad": {"known": {}, "missing": ["test"], "conflicts": []}, "action": "tool_call", "tool": "query_data", "input": "test"}'
     result = parse_llm_json(text)
     assert result["action"] == "tool_call"
     assert result["tool"] == "query_data"
+    assert result["scratchpad"] == {"known": {}, "missing": ["test"], "conflicts": []}
 
 def test_parse_llm_json_markdown():
     """Test parsing JSON wrapped in markdown fences."""
     text = '''```json
-    {"action": "final_answer", "answer": "The answer is 42."}
+    {"scratchpad": {"known": {}, "missing": [], "conflicts": []}, "action": "final_answer", "answer": "The answer is 42.", "citations": "None"}
     ```'''
     result = parse_llm_json(text)
     assert result["action"] == "final_answer"
@@ -23,7 +24,7 @@ def test_parse_llm_json_markdown():
 def test_parse_llm_json_common_errors():
     """Test that the parser catches and fixes trailing commas and newlines."""
     # This JSON is technically invalid because of the trailing comma and unescaped newline.
-    text = '{"action": "final_answer", "answer": "Multiline\ntext",}'
+    text = '{"scratchpad": {"known": {}, "missing": [], "conflicts": []}, "action": "final_answer", "answer": "Multiline\ntext",}'
     result = parse_llm_json(text)
     assert result["action"] == "final_answer"
     assert "Multiline text" in result["answer"]
@@ -35,7 +36,7 @@ def test_f1agent_trivial_question(mocker):
     # Mock the LLM to return a direct final_answer decision
     mock_model = mocker.patch('google.generativeai.GenerativeModel')
     mock_response = MagicMock()
-    mock_response.text = '{"action": "final_answer", "answer": "Direct answer", "citations": "None"}'
+    mock_response.text = '{"scratchpad": {"known": {}, "missing": [], "conflicts": []}, "action": "final_answer", "answer": "Direct answer", "citations": "None"}'
     mock_model.return_value.generate_content.return_value = mock_response
 
     # Inject mock into agent
@@ -43,9 +44,9 @@ def test_f1agent_trivial_question(mocker):
 
     result = agent.run("What is 2+2?")
     
-    assert result["steps_used"] == 1
+    assert result["steps_used"] == 0  # No tool calls made
     assert result["answer"] == "Direct answer"
-    assert len(result["trace"]) == 0  # No tool calls made
+    assert len(result["trace"]) == 1  # 1 REFLECT & PLAN step, but no tool calls
 
 def test_f1agent_tool_routing(mocker):
     """Test that the F1Agent correctly parses a tool_call and injects it into trace."""
@@ -55,10 +56,10 @@ def test_f1agent_tool_routing(mocker):
     # Response 1: I need to use a tool.
     # Response 2: Now I have the result, I will output the final answer.
     mock_response_1 = MagicMock()
-    mock_response_1.text = '{"action": "tool_call", "tool": "query_data", "input": "test tool input"}'
+    mock_response_1.text = '{"scratchpad": {"known": {}, "missing": ["race_winner"], "conflicts": []}, "action": "tool_call", "tool": "query_data", "input": "test tool input"}'
     
     mock_response_2 = MagicMock()
-    mock_response_2.text = '{"action": "final_answer", "answer": "MCL38", "citations": "query_data"}'
+    mock_response_2.text = '{"scratchpad": {"known": {"race_winner": {"value": "MCL38", "source": "query_data", "confidence": "high"}}, "missing": [], "conflicts": []}, "action": "final_answer", "answer": "MCL38", "citations": "query_data"}'
 
     mock_model = mocker.patch('google.generativeai.GenerativeModel')
     # Use side_effect to return different responses on consecutive calls
@@ -70,11 +71,11 @@ def test_f1agent_tool_routing(mocker):
 
     result = agent.run("Who won the race?")
 
-    assert result["steps_used"] == 2
+    assert result["steps_used"] == 1  # 1 actual tool call
     assert result["answer"] == "MCL38"
-    assert len(result["trace"]) == 1
-    assert result["trace"][0]["tool"] == "query_data"
-    assert result["trace"][0]["result"] == "Simulated tool output"
+    assert len(result["trace"]) == 3  # REFLECT1 -> ACT1 -> REFLECT2
+    assert result["trace"][1]["tool"] == "query_data"
+    assert result["trace"][1]["result"] == "Simulated tool output"
 
 def test_f1agent_hard_cap(mocker):
     """Test that the F1Agent enforces its infinite loop cap (8) and refuses."""
@@ -83,7 +84,7 @@ def test_f1agent_hard_cap(mocker):
     # Force the LLM to return `tool_call` every single time, creating an infinite loop
     mock_model = mocker.patch('google.generativeai.GenerativeModel')
     mock_response = MagicMock()
-    mock_response.text = '{"action": "tool_call", "tool": "query_data", "input": "looping"}'
+    mock_response.text = '{"scratchpad": {"known": {}, "missing": ["data"], "conflicts": []}, "action": "tool_call", "tool": "query_data", "input": "looping"}'
     mock_model.return_value.generate_content.return_value = mock_response
     agent.model = mock_model.return_value
 
@@ -92,7 +93,7 @@ def test_f1agent_hard_cap(mocker):
 
     result = agent.run("This question is a trap to cause an infinite loop.")
     
-    # Assert it halted precisely at MAX_STEPS
+    # Assert it halted at exactly MAX_STEPS tool calls
     assert result["steps_used"] == agent.MAX_STEPS
     # Assert the refusal message was generated
     assert "REFUSAL" in result["answer"]
