@@ -89,7 +89,11 @@ class QueryDataTool(BaseTool):
         if not os.path.exists(DB_PATH):
             return "ERROR: Database not found. Run 'python -m indexing.load_data' first."
 
-
+        # Guard: block raw SQL injection in the user query itself
+        query_upper = query.upper()
+        RAW_FORBIDDEN = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"]
+        if any(kw in query_upper for kw in RAW_FORBIDDEN) and ";" in query:
+            return "ERROR: Query looks like a SQL injection attempt. Ask in plain English."
 
         try:
             # Step 0: Resolve location aliases locally (avoid LLM dependency for simple mappings)
@@ -137,7 +141,17 @@ class QueryDataTool(BaseTool):
             sql = sql.strip()
             print(f"  [query_data] SQL: {sql}")
 
-
+            sql_upper = sql.upper().strip()
+            # Block non-SELECT statements
+            if not sql_upper.startswith("SELECT"):
+                return f"ERROR: Only SELECT queries are permitted.\nGenerated SQL: {sql}"
+            # Block stacked statements (e.g. SELECT 1; DROP TABLE)
+            if re.search(r';\s*\S', sql):
+                return f"ERROR: Multi-statement SQL is not permitted.\nGenerated SQL: {sql}"
+            # Block forbidden keywords anywhere in the query
+            FORBIDDEN = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE", "EXEC"]
+            if any(kw in sql_upper for kw in FORBIDDEN):
+                return f"ERROR: SQL contains a forbidden keyword.\nGenerated SQL: {sql}"
 
             # Step 2: Execute SQL
             conn = sqlite3.connect(DB_PATH)
