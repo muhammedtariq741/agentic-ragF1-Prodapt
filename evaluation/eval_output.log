@@ -1,0 +1,168 @@
+/Users/zene/Prodapt-Agentic-RAG/utils/llm.py:3: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+============================================================
+  🏎️  F1 Agentic RAG — Evaluation Runner
+============================================================
+Loaded 20 evaluation questions.
+
+
+============================================================
+  [1/20] How many points did Max Verstappen score in 2024?
+============================================================
+  Step 1: tool=query_data input='SELECT SUM(points) FROM race_results WHERE driver = 'Max Verstappen' AND season = 2024'
+  [query_data] SQL: SELECT SUM(points) FROM race_results WHERE driver = 'Max Verstappen' AND season = 2024
+  ✅ Q1 [single_tool]: Tool: ✅ (['query_data']), Keyword 'points': ✅
+
+============================================================
+  [2/20] Who won the 2024 British Grand Prix?
+============================================================
+  Step 1: tool=query_data input='SELECT driver FROM race_results WHERE grand_prix = 'British Grand Prix' AND season = 2024 AND finish_position = 1'
+  [query_data] SQL: SELECT driver FROM race_results WHERE grand_prix = 'British Grand Prix' AND season = 2024 AND finish_position = 1
+  ✅ Q2 [single_tool]: Tool: ✅ (['query_data']), Keyword 'hamilton': ✅
+
+============================================================
+  [3/20] How many races did Lando Norris win in 2024?
+============================================================
+  Step 1: tool=query_data input='SELECT COUNT(*) FROM race_results WHERE driver = 'Lando Norris' AND season = 2024 AND finish_position = 1'
+  [query_data] SQL: SELECT COUNT(*) FROM race_results WHERE driver = 'Lando Norris' AND season = 2024 AND finish_position = 1
+  ✅ Q3 [single_tool]: Tool: ✅ (['query_data']), Keyword 'norris': ✅
+
+============================================================
+  [4/20] What was the finishing order at the 2024 Monaco Grand Prix?
+============================================================
+  Step 1: tool=query_data input='SELECT finish_position, driver FROM race_results WHERE grand_prix = 'Monaco Grand Prix' AND season = 2024 ORDER BY finish_position ASC'
+  [query_data] SQL: SELECT finish_position, driver FROM race_results WHERE grand_prix = 'Monaco Grand Prix' AND season = 2024 ORDER BY finish_position ASC
+  ✅ Q4 [single_tool]: Tool: ✅ (['query_data']), Keyword 'monaco': ✅
+
+============================================================
+  [5/20] What was Red Bull's team strategy during the 2024 Hungarian Grand Prix?
+============================================================
+  Step 1: tool=search_docs input='Red Bull team strategy 2024 Hungarian Grand Prix analysis'
+  Step 2: tool=search_docs input='Red Bull team strategy 2024 Hungarian Grand Prix analysis'
+  Step 3: tool=search_docs input='Red Bull Racing team strategy 2024 Hungarian Grand Prix analysis'
+  Step 4: tool=search_docs input='Red Bull Racing strategy 2024 Hungarian Grand Prix'
+  Step 5: tool=search_docs input='Red Bull racing team strategy 2024 Hungarian Grand Prix Max Verstappen frustration'
+  Step 6: tool=search_docs input='Red Bull racing team strategy Hungarian Grand Prix 2024 radio frustration Verstappen'
+  ✅ Q5 [single_tool]: Tool: ✅ (['search_docs', 'search_docs', 'search_docs', 'search_docs', 'search_docs', 'search_docs']), Keyword 'strategy': ✅
+
+============================================================
+  [6/20] What were the key storylines from the 2024 season?
+============================================================
+  Step 1: tool=search_docs input='key storylines and narratives of the 2024 Formula 1 season'
+  Step 2: tool=search_docs input='What were the major storylines and performance trends of the 2024 F1 season?'
+  Step 3: tool=search_docs input='What were the key storylines and narrative arcs of the 2024 Formula 1 season?'
+  Step 4: tool=web_search input='key storylines and season review 2024 F1 championship'
+  ✅ Q6 [single_tool]: Tool: ✅ (['search_docs', 'search_docs', 'search_docs', 'web_search']), Keyword 'season': ✅
+
+============================================================
+  [7/20] How many podiums did Lewis Hamilton get in 2024, and what was notable about his race at Silverstone?
+============================================================
+  Step 1: tool=query_data input='SELECT finish_position, grand_prix FROM race_results WHERE driver = 'Lewis Hamilton' AND season = 2024 AND finish_position <= 3'
+  [query_data] SQL: SELECT finish_position, grand_prix FROM race_results WHERE driver = 'Lewis Hamilton' AND season = 2024 AND finish_position <= 3
+  Step 2: tool=search_docs input='what was notable about Lewis Hamilton's win at the 2024 British Grand Prix at Silverstone'
+  Step 3: tool=search_docs input='why was Lewis Hamilton's win at the 2024 British Grand Prix notable'
+  Step 4: tool=search_docs input='what was notable about Lewis Hamilton's win at the 2024 British Grand Prix at Silverstone'
+  Step 5: tool=search_docs input='Why was the 2024 British Grand Prix notable for Lewis Hamilton?'
+  Step 6: tool=web_search input='why was the 2024 British Grand Prix notable for Lewis Hamilton'
+  ✅ Q7 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'search_docs', 'search_docs', 'search_docs', 'search_docs', 'web_search']), Keyword: ✅
+
+============================================================
+  [8/20] Compare Verstappen's total points in 2023 vs 2024 and explain why his dominance decreased.
+============================================================
+  Step 1: tool=query_data input='SELECT season, SUM(points) FROM race_results WHERE driver LIKE '%Verstappen%' GROUP BY season'
+  [query_data] SQL: SELECT season, SUM(points) FROM race_results WHERE driver LIKE '%Verstappen%' GROUP BY season
+  Step 2: tool=search_docs input='Why did Max Verstappen's dominance decrease in the 2024 F1 season compared to 2023?'
+  Step 3: tool=search_docs input='why did Max Verstappen's performance and dominance decrease in the 2024 F1 season compared to 2023'
+  Step 4: tool=search_docs input='why did Max Verstappen's performance decrease in the 2024 F1 season compared to 2023'
+  ✅ Q8 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'search_docs', 'search_docs', 'search_docs']), Keyword: ✅
+
+============================================================
+  [9/20] How did McLaren perform in the 2024 constructors standings, and what was their development strategy?
+============================================================
+  Step 1: tool=query_data input='SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 AND constructor = 'McLaren' GROUP BY constructor'
+  [query_data] SQL: SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 AND constructor = 'McLaren' GROUP BY constructor
+  Step 2: tool=query_data input='SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 GROUP BY constructor ORDER BY total_points DESC'
+  [query_data] SQL: SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 GROUP BY constructor ORDER BY total_points DESC
+  Step 3: tool=search_docs input='McLaren 2024 F1 development strategy and season performance analysis'
+  Step 4: tool=search_docs input='McLaren F1 2024 development strategy analysis'
+  Step 5: tool=search_docs input='McLaren F1 2024 development strategy analysis upgrade packages'
+  ✅ Q9 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'query_data', 'search_docs', 'search_docs', 'search_docs']), Keyword: ✅
+
+============================================================
+  [10/20] Who won the 2024 Brazilian Grand Prix and what were the race conditions like?
+============================================================
+  Step 1: tool=query_data input='SELECT driver, finish_position FROM race_results WHERE grand_prix = 'São Paulo Grand Prix' AND season = 2024 AND finish_position = 1'
+  [query_data] SQL: SELECT driver, finish_position FROM race_results WHERE grand_prix = 'São Paulo Grand Prix' AND season = 2024 AND finish_position = 1
+  Step 2: tool=search_docs input='race conditions 2024 Sao Paulo Grand Prix'
+  Step 3: tool=search_docs input='race conditions 2024 São Paulo Grand Prix'
+  Step 4: tool=web_search input='race conditions 2024 Sao Paulo Grand Prix F1'
+  ❌ Q10 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'search_docs', 'search_docs', 'web_search']), Keyword: ❌
+
+============================================================
+  [11/20] What are the latest F1 driver standings and how do they compare to our 2024 data?
+============================================================
+  Step 1: tool=web_search input='current F1 2024 driver standings'
+  ❌ Q11 [multi_tool]: Tools: ❌ (expected ['query_data', 'web_search'], got ['web_search']), Keyword: ✅
+
+============================================================
+  [12/20] How many wins did Ferrari get in 2024 and what's their current 2025 form?
+============================================================
+  Step 1: tool=query_data input='SELECT COUNT(*) FROM race_results WHERE season = 2024 AND constructor = 'Ferrari' AND finish_position = 1'
+  [query_data] SQL: SELECT COUNT(*) FROM race_results WHERE season = 2024 AND constructor = 'Ferrari' AND finish_position = 1
+  Step 2: tool=web_search input='Ferrari Formula 1 2025 season current form and results'
+  ✅ Q12 [multi_tool]: Tools: ✅ (expected ['query_data', 'web_search'], got ['query_data', 'web_search']), Keyword: ✅
+
+============================================================
+  [13/20] Which F1 team should I invest in?
+============================================================
+  ✅ Q13 [refusal]: No tools: ✅ ([]), Refusal language: ✅
+
+============================================================
+  [14/20] Who will win the 2026 Formula 1 World Championship?
+============================================================
+  ✅ Q14 [refusal]: No tools: ✅ ([]), Refusal language: ✅
+
+============================================================
+  [15/20] Is Max Verstappen the GOAT of Formula 1?
+============================================================
+  ✅ Q15 [refusal]: No tools: ✅ ([]), Refusal language: ✅
+
+============================================================
+  [16/20] Write me a Python script to scrape F1 data from the FIA website.
+============================================================
+  ✅ Q16 [refusal]: No tools: ✅ ([]), Refusal language: ✅
+
+============================================================
+  [17/20] What happened in the 2019 German Grand Prix?
+============================================================
+  ✅ Q17 [edge_case]: Tools used: [], Steps: 0
+
+============================================================
+  [18/20] What is 2 + 2?
+============================================================
+  ✅ Q18 [edge_case]: Tools used: [], Steps: 0
+
+============================================================
+  [19/20] Tell me about the 2024 Monaco Grand Prix strategy AND who won AND what the latest news is about that circuit.
+============================================================
+  Step 1: tool=query_data input='SELECT driver, constructor FROM race_results WHERE grand_prix = 'Monaco Grand Prix' AND season = 2024 AND finish_position = 1'
+  [query_data] SQL: SELECT driver, constructor FROM race_results WHERE grand_prix = 'Monaco Grand Prix' AND season = 2024 AND finish_position = 1
+  Step 2: tool=search_docs input='strategy analysis 2024 Monaco Grand Prix'
+  Step 3: tool=search_docs input='strategy analysis 2024 Monaco Grand Prix'
+  Step 4: tool=search_docs input='2024 Monaco Grand Prix race strategy and analysis'
+  Step 5: tool=web_search input='2024 Monaco Grand Prix race strategy analysis and recent news about Monaco Grand Prix circuit'
+  ✅ Q19 [edge_case]: Tools used: ['query_data', 'search_docs', 'search_docs', 'search_docs', 'web_search'], Steps: 5
+  ✅ Q20 [edge_case]: Empty input handled gracefully
+
+📄 Report saved to: /Users/zene/Prodapt-Agentic-RAG/evaluation/eval_report.md
+
+============================================================
+  FINAL SCORE: 18/20 (90%)
+============================================================
