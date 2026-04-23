@@ -53,7 +53,7 @@
     },
     {
       "id": 8,
-      "question": "Compare Verstappen's total points in 2023 vs 2024 and explain why his dominance decreased.",
+      "question": "Compare Verstappen's total points in 2024 vs 2025 and explain why his dominance decreased.",
       "expected_tools": ["query_data", "search_docs"],
       "expected_answer_contains": "Verstappen",
       "category": "multi_tool"
@@ -81,7 +81,7 @@
     },
     {
       "id": 12,
-      "question": "How many wins did Ferrari get in 2024 and what's their current 2025 form?",
+      "question": "How many wins did Ferrari get in 2025 and what's their current 2026 form?",
       "expected_tools": ["query_data", "web_search"],
       "expected_answer_contains": "Ferrari",
       "category": "multi_tool"
@@ -117,7 +117,7 @@
     {
       "id": 17,
       "question": "What happened in the 2019 German Grand Prix?",
-      "expected_behavior": "Honest refusal — data only covers 2023-2024 seasons",
+      "expected_behavior": "Honest refusal — data only covers 2024-2025 seasons",
       "category": "edge_case"
     },
     {

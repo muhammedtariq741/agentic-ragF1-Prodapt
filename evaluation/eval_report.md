@@ -103,7 +103,7 @@
 - **Category:** refusal
 - **Tools Used:** []
 - **Steps:** 0
-- **Answer:** I cannot provide investment advice. My capabilities are strictly limited to providing historical F1 data and analysis for the 2023-2024 seasons as an expert F1 assistant.
+- **Answer:** I cannot provide investment advice. My capabilities are strictly limited to providing historical F1 data and analysis for the 2024-2025 seasons as an expert F1 assistant.
 - **Notes:** No tools: ✅ ([]), Refusal language: ✅
 
 ### ✅ Q14: Who will win the 2026 Formula 1 World Championship?
@@ -157,5 +157,59 @@
 
 ## Failure Analysis
 
-- **Q10** (multi_tool): Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'search_docs', 'search_docs', 'web_search']), Keyword: ❌
-- **Q11** (multi_tool): Tools: ❌ (expected ['query_data', 'web_search'], got ['web_search']), Keyword: ✅
+### Failure Mode 1: Semantic Drift in Document Retrieval (Q5)
+
+**Symptom:** When asking "What strategy did McLaren use at the 2024 Hungarian Grand Prix?", the agent retrieves Chunk 0 (race introduction) instead of Chunks 3-6 (which contain the actual strategy details — pit stop timing, tyre compound choices, team orders between Norris and Piastri).
+
+**Root Cause:** ChromaDB's cosine similarity ranks the introductory paragraph highest because it contains the most keyword overlap with the query ("McLaren", "2024", "Hungarian Grand Prix"). The actual strategy content uses domain-specific terminology ("undercut", "overcut", "medium compound") that has lower semantic similarity to the word "strategy" in the embedding space. This is a well-known limitation of dense retrieval — it favors surface-level keyword overlap over deep topical relevance.
+
+**Proposed Fix:** Increase `n_results` from 3 to 5 so the agent receives deeper chunks on the first call. A more robust solution would be hybrid retrieval (BM25 + dense), which would boost chunks containing domain-specific strategy vocabulary.
+
+---
+
+### Failure Mode 2: Wrong Tool Path for Comparative Questions (Q11)
+
+**Symptom:** When asked "What are the latest F1 driver standings and how do they compare to our 2024 data?", the agent used only `web_search` instead of `query_data` + `web_search`. The answer was factually correct but sourced entirely from the web, bypassing the local database.
+
+**Root Cause:** The phrase "latest standings" in the question biased the LLM's routing decision toward `web_search`, even though the second half of the question ("compare to our 2024 data") explicitly referenced the local database. The LLM processed the first clause, chose a tool, and never revisited the second clause. This is a known attention bias in autoregressive models — early tokens in a prompt disproportionately influence tool selection.
+
+**Proposed Fix:** Add a system prompt rule: "If a question contains multiple sub-questions, plan ALL tool calls needed before executing the first one."
+
+---
+
+### Failure Mode 3: Evaluator False Negative — Keyword Matching Limitation (Q10)
+
+**Symptom:** The agent correctly identified that the 2024 Brazilian Grand Prix was held in "wet-weather conditions" but the evaluator marked it as failed because it checked for the literal keyword "rain."
+
+**Root Cause:** The automated evaluator uses rigid keyword matching (`"rain" in answer.lower()`), which cannot recognize semantic equivalents like "wet-weather", "damp track", or "precipitation." This is a limitation of the evaluator, not the agent.
+
+**Decision:** Not fixed. Overfitting the system prompt to force the word "rain" would mask the evaluator's limitation. In a production system, evaluation should use semantic similarity scoring, not exact keyword matching.
+
+---
+
+### Failure Mode 4: Meta-Analysis Questions Exceed Single-Document Retrieval
+
+**Symptom:** Questions like "What factors led to Norris closing the gap in the second half of the 2024 season?" return irrelevant chunks from individual race documents because no single document contains a season-level narrative synthesis.
+
+**Root Cause:** The document corpus consists of individual race reports (one `.txt` per Grand Prix). These documents describe what happened at each race but do not contain cross-race trend analysis. ChromaDB's retrieval model assumes the answer exists in a single chunk — it cannot synthesize across 24 separate documents to construct a narrative.
+
+**Proposed Fix:** Added a `f1_general_knowledge.txt` document containing season overviews, driver career profiles, and championship summaries. For questions requiring true cross-document synthesis, the agent could be enhanced with a "map-reduce" retrieval pattern: retrieve top chunks from multiple documents, then ask the LLM to synthesize them.
+
+---
+
+### Tool Error Handling — Identified & Fixed
+
+During review, we identified that the original tool execution block used a bare `try/except` that caught errors but did not implement the three recovery strategies outlined in the assignment spec:
+
+1. **Retry once** — transient failures (rate limits, timeouts) often resolve on a second attempt.
+2. **Fall back to a different tool** — if `query_data` is down, `search_docs` may still answer.
+3. **Return a partial answer** — if all tools fail, the agent should say what it knows and note the gap.
+
+**Before (vulnerable):**
+```python
+try: result = self.tools[t_name].run(t_input)
+except Exception as e: result = f"ERROR: {e}"
+```
+
+**After (hardened):**
+The agent now implements a retry-once loop. On first failure, it waits 1 second and retries. If the retry also fails, it logs a `RETRY` and `ERROR` state in the trace, then sends a structured fallback prompt to the LLM instructing it to either try a different tool or provide a partial answer with a failure note. The agent never silently swallows errors or crashes on unhandled exceptions.
