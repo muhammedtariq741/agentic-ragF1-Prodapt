@@ -21,12 +21,12 @@ class SearchDocsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search F1 articles and analysis documents (2023-2024). "
+            "Search F1 articles and analysis documents (2024-2025). "
             "USE THIS FOR: Qualitative questions, explanations of 'why' something happened, subjective opinions, team strategies, season narratives, and driver quotes. "
-            "DO NOT USE THIS FOR: Exact raw numerical statistics, current real-time news outside of 2023-2024, or live race results."
+            "DO NOT USE THIS FOR: Exact raw numerical statistics, current real-time news outside of 2024-2025, or live race results."
         )
 
-    def run(self, query: str, n_results: int = 3) -> str:
+    def run(self, query: str, n_results: int = 5) -> str:
         if not os.path.exists(VECTOR_STORE_PATH):
             return "ERROR: Vector store not found. Run 'python -m indexing.embed_docs' first."
 

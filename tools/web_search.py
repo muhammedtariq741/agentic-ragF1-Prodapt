@@ -18,8 +18,8 @@ class WebSearchTool(BaseTool):
     def description(self) -> str:
         return (
             "Search the live web for current F1 information via Tavily. "
-            "USE THIS FOR: Breaking news, real-time standings, recent events outside 2023-2024, or fallback when local data/documents fail. "
-            "DO NOT USE THIS FOR: First-pass data retrieval for 2023-2024. ALWAYS try `query_data` and `search_docs` first for those seasons!"
+            "USE THIS FOR: Breaking news, real-time standings, recent events outside 2024-2025, or fallback when local data/documents fail. "
+            "DO NOT USE THIS FOR: First-pass data retrieval for 2024-2025. ALWAYS try `query_data` and `search_docs` first for those seasons!"
         )
 
     def run(self, query: str, max_results: int = 3) -> str:
