@@ -14,7 +14,7 @@ SCHEMA_PROMPT = """You are a SQL expert. Convert the user's question into a SQLi
 
 Table: race_results
 Columns:
-  season (INT)           -- 2023 or 2024
+  season (INT)           -- 2024 or 2025
   round (INT)            -- round number in the season
   grand_prix (TEXT)      -- e.g. "Bahrain Grand Prix"
   circuit (TEXT)         -- e.g. "Bahrain International Circuit"
@@ -63,6 +63,7 @@ Rules:
 - Use LIKE for partial text matching (e.g., driver LIKE '%Verstappen%').
 - When a user mentions a location, track, city, or country, use the mapping above to match against the EXACT grand_prix or circuit value. Always check BOTH columns using OR.
 - For "wins", use finish_position = 1.
+- For "podiums", use finish_position <= 3 (P1, P2, and P3 are ALL podiums — wins count as podiums).
 - Always include relevant columns in SELECT for context.
 - Note: "Monza" refers to the Italian GP, NOT Imola. "Imola" is the Emilia Romagna GP. These are two different races in Italy.
 """
@@ -78,9 +79,9 @@ class QueryDataTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Query structured F1 race results (2023-2024). "
+            "Query structured F1 race results (2024-2025). "
             "USE THIS FOR: Hard numerical statistics, standings, driver points, race counts, grid/finish positions, and constructor performance. "
-            "DO NOT USE THIS FOR: Explanations of 'why' a driver won/lost, subjective opinions, team strategies, track conditions, or events occurring outside the 2023-2024 seasons."
+            "DO NOT USE THIS FOR: Explanations of 'why' a driver won/lost, subjective opinions, team strategies, track conditions, or events occurring outside the 2024-2025 seasons."
         )
 
     def run(self, query: str) -> str:
@@ -170,7 +171,8 @@ class QueryDataTool(BaseTool):
             result_lines = [" | ".join(columns)]
             result_lines.append("-" * len(result_lines[0]))
             for idx, row in enumerate(rows[:25], start=1):  # Cap at 25 rows
-                result_lines.append(f"Row {idx}: " + " | ".join(str(v) for v in row))
+                formatted = [f"{v:.2f}" if isinstance(v, float) else str(v) for v in row]
+                result_lines.append(f"Row {idx}: " + " | ".join(formatted))
 
             return f"SQL: {sql}\nResults ({len(rows)} rows):\n" + "\n".join(result_lines)
 
