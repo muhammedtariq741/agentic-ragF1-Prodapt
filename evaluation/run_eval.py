@@ -167,7 +167,8 @@ def main():
         results.append(result)
         icon = "✅" if result["passed"] else "❌"
         print(f"  {icon} Q{result['id']} [{result['category']}]: {result['notes']}")
-        time.sleep(1)  # Respect API rate limits
+        print("  [Waiting 15s to respect Groq API Rate Limits...]")
+        time.sleep(15)  # Respect Groq API free-tier rate limits (TPM/RPM)
 
     report = generate_report(results)
 
