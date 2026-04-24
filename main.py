@@ -144,174 +144,143 @@ class F1Agent:
             tool_descriptions=build_tool_descriptions(self.tools)
         )
 
-    def run(self, question: str) -> dict:
-        """Run the agent loop for a single question (max 8 steps)."""
-        trace = []
-        tool_call_count = 0
-        memory = {"known": {}, "missing": [], "conflicts": []}
-        # Stores concise summaries of each tool call + result
-        tool_history = []  # list of {"tool": str, "input": str, "result_summary": str}
-        seen_calls = set()  # track (tool_name, input) tuples to block exact duplicates
+    def _build_context(self, question, tool_history, memory):
+        """Build the LLM user prompt from scratch each iteration."""
+        parts = [f"User question: {question}"]
+        if tool_history:
+            parts.append("\n--- TOOL RESULTS SO FAR ---")
+            for th in tool_history:
+                parts += [f"Tool: {th['tool']} | Query: {th['input']}",
+                          f"Result: {th['result_summary']}", "---"]
+        parts += [f"\nCurrent memory state: {json.dumps(memory)}",
+                  "\nCRITICAL: Extract ALL facts into scratchpad. No duplicate queries.",
+                  "If results contain the answer, output final_answer NOW. Reply JSON only."]
+        return "\n".join(parts)
 
-        for step in range(1, self.MAX_STEPS * 2 + 1):  # Hard ceiling: at most 2x MAX_STEPS LLM iterations
-            # 1. Build context from scratch each step (prevents unbounded growth)
-            context_parts = [f"User question: {question}"]
-            if tool_history:
-                context_parts.append("\n--- TOOL RESULTS SO FAR ---")
-                for th in tool_history:
-                    context_parts.append(f"Tool: {th['tool']} | Query: {th['input']}")
-                    context_parts.append(f"Result: {th['result_summary']}")
-                    context_parts.append("---")
-            context_parts.append(f"\nCurrent memory state: {json.dumps(memory)}")
-            context_parts.append("\nCRITICAL INSTRUCTIONS:")
-            context_parts.append("1. Extract ALL specific facts (names, numbers, dates) from the tool results above into your scratchpad 'known' dict.")
-            context_parts.append("2. Do NOT repeat a query you already made above.")
-            context_parts.append("3. If the tool results already contain the answer, provide final_answer NOW. Do not search again.")
-            context_parts.append("4. Respond with JSON.")
-            user_content = "\n".join(context_parts)
-
-            # 2. Call LLM with basic retry
-            raw_text = None
+    def _run_tool_with_retry(self, t_name, t_input):
+        """Execute a tool with one retry on failure. Returns (result, error)."""
+        for attempt in range(1, 3):
             try:
-                raw_text = generate_llm_response(self.system_prompt, user_content)
+                return self.tools[t_name].run(t_input), None
             except Exception as e:
-                trace.append({"step": step, "state": "ERROR", "error": f"LLM error: {e}"})
-                raw_text = None
-                
-            if not raw_text:
-                return {"question": question, "answer": "ERROR: LLM failed to respond.",  
+                if attempt == 1:
+                    print(f"  ['{t_name}' failed, retrying...]")
+                    time.sleep(1)
+                else:
+                    return None, e
+        return None, RuntimeError("Retry exhausted")
+
+    def _critique_answer(self, question, proposed_answer, tool_history):
+        """Bonus C: Post-loop self-critique. Returns (final_answer, critique_note)."""
+        print("  [CRITIQUE & FIX] Reviewing proposed final answer...")
+        critique_sys = (
+            "You are an expert F1 evaluator. Critique the proposed answer based ONLY on the provided tool results. "
+            "Look for hallucinations, missing context, or failures to directly answer the user's question. "
+            "If the answer is perfect, return it exactly as is. If it has flaws, return a corrected version. "
+            'Respond with JSON: {"critique": "your analysis", "answer": "the final answer"}'
+        )
+        critique_user = f"Original Question: {question}\n\nTool Results:\n"
+        for th in tool_history:
+            critique_user += f"Tool: {th['tool']} | Result: {th['result_summary']}\n"
+        critique_user += f"\nProposed Answer: {proposed_answer}"
+        try:
+            raw = generate_llm_response(critique_sys, critique_user)
+            parsed = parse_llm_json(raw)
+            return parsed.get("answer", proposed_answer), parsed.get("critique", "No critique.")
+        except Exception as e:
+            return proposed_answer, f"Critique failed: {e}"
+
+    def _build_citations(self, trace, decision):
+        """Build grounded citation string from trace + LLM's own citation note."""
+        grounded = "; ".join(f"{e['tool']} (input: '{e['input']}')"
+                             for e in trace if e.get("state") == "ACT") or "None"
+        llm_note = decision.get("citations", "")
+        if isinstance(llm_note, list):
+            llm_note = ", ".join(str(c) for c in llm_note)
+        return f"{grounded} | LLM note: {llm_note}"
+
+    def run(self, question: str) -> dict:
+        """Run the agent loop for a single question (max 8 tool calls)."""
+        trace, tool_history, seen_calls = [], [], set()
+        memory = {"known": {}, "missing": [], "conflicts": []}
+        tool_call_count = 0
+
+        for step in range(1, self.MAX_STEPS * 2 + 1):
+            # 1. Ask LLM
+            try:
+                raw = generate_llm_response(
+                    self.system_prompt,
+                    self._build_context(question, tool_history, memory))
+            except Exception as e:
+                trace.append({"step": step, "state": "ERROR", "error": str(e)})
+                return {"question": question, "answer": "ERROR: LLM failed.",
+                        "citations": "None", "trace": trace, "steps_used": tool_call_count}
+            if not raw:
+                return {"question": question, "answer": "ERROR: LLM failed to respond.",
                         "citations": "None", "trace": trace, "steps_used": tool_call_count}
 
-            # 2. Parse JSON decision and State Tracker
+            # 2. Parse JSON decision & update scratchpad memory
             try:
-                decision = parse_llm_json(raw_text)
+                decision = parse_llm_json(raw)
                 action = decision.get("action", "")
-                scratchpad = decision.get("scratchpad", {})
-                if isinstance(scratchpad, dict):
-                    # Merge LLM's structured memory into our running memory
-                    for k, v in scratchpad.get("known", {}).items():
-                        memory["known"][k] = v
-                    memory["missing"] = scratchpad.get("missing", memory["missing"])
-                    memory["conflicts"] = scratchpad.get("conflicts", memory["conflicts"])
+                sp = decision.get("scratchpad", {})
+                if isinstance(sp, dict):
+                    memory["known"].update(sp.get("known", {}))
+                    memory["missing"] = sp.get("missing", memory["missing"])
+                    memory["conflicts"] = sp.get("conflicts", memory["conflicts"])
                 trace.append({"step": step, "state": "REFLECT & PLAN", "memory": memory.copy()})
             except Exception as e:
-                trace.append({"step": step, "state": "ERROR", "error": f"Parse error: {e}", "raw": raw_text[:100]})
-                tool_history.append({"tool": "SYSTEM", "input": "parse", "result_summary": "ERROR: Your last response was not valid JSON. Reply with PURE JSON only."})
+                trace.append({"step": step, "state": "ERROR", "error": f"Parse error: {e}"})
+                tool_history.append({"tool": "SYSTEM", "input": "parse",
+                                     "result_summary": "ERROR: Invalid JSON. Reply PURE JSON only."})
                 continue
 
-            # 3. Auto-correct missing 'tool_call' syntax
+            # 3. Auto-correct bare tool name as action
             if action in self.tools:
                 decision.update({"tool": action, "action": "tool_call"})
                 action = "tool_call"
 
-            # 4. Route Action
+            # 4. Final answer → critique → return
             if action == "final_answer":
-                proposed_answer = decision.get("answer", "None")
-                
-                # --- BONUS C: Post-Answer Self-Critique ---
-                print("  [CRITIQUE & FIX] Reviewing proposed final answer...")
-                critique_sys_prompt = (
-                    "You are an expert F1 evaluator. Critique the proposed answer based ONLY on the provided tool results. "
-                    "Look for hallucinations, missing context, or failures to directly answer the user's question. "
-                    "If the answer is perfect, return it exactly as is. If it has flaws, return a corrected version. "
-                    'Respond with JSON: {"critique": "your analysis", "answer": "the final answer"}'
-                )
-                
-                critique_user_prompt = f"Original Question: {question}\n\nTool Results:\n"
-                for th in tool_history:
-                    critique_user_prompt += f"Tool: {th['tool']} | Result: {th['result_summary']}\n"
-                critique_user_prompt += f"\nProposed Answer: {proposed_answer}"
-                
-                try:
-                    critique_raw = generate_llm_response(critique_sys_prompt, critique_user_prompt)
-                    critique_json = parse_llm_json(critique_raw)
-                    final_answer = critique_json.get("answer", proposed_answer)
-                    critique_note = critique_json.get("critique", "No critique provided.")
-                except Exception as e:
-                    final_answer = proposed_answer
-                    critique_note = f"Critique failed: {e}"
+                proposed = decision.get("answer", "None")
+                final, critique = self._critique_answer(question, proposed, tool_history)
+                trace.append({"step": "FINAL", "state": "CRITIQUE & FIX",
+                              "original_answer": proposed, "critique": critique, "fixed_answer": final})
+                return {"question": question, "answer": final,
+                        "citations": self._build_citations(trace, decision),
+                        "trace": trace, "steps_used": tool_call_count}
 
-                trace.append({
-                    "step": "FINAL", 
-                    "state": "CRITIQUE & FIX", 
-                    "original_answer": proposed_answer, 
-                    "critique": critique_note, 
-                    "fixed_answer": final_answer
-                })
-                
-                grounded = [f"{e['tool']} (input: '{e['input']}')" 
-                            for e in trace if e.get("state") == "ACT"]
-                grounded_str = "; ".join(grounded) if grounded else "None"
-                llm_citations = decision.get("citations", "")
-                if isinstance(llm_citations, list):
-                    llm_citations = ", ".join(str(c) for c in llm_citations)
-                    
-                return {"question": question, "answer": final_answer, 
-                        "citations": grounded_str + " | LLM note: " + str(llm_citations), "trace": trace, "steps_used": tool_call_count}
-            
+            # 5. Tool call
             elif action == "tool_call":
                 t_name, t_input = decision.get("tool", ""), decision.get("input", "")
                 if t_name not in self.tools:
-                    trace.append({"step": step, "error": f"Unknown tool '{t_name}'"})
-                    tool_history.append({"tool": t_name, "input": t_input, "result_summary": f"ERROR: Unknown tool '{t_name}'"})
+                    tool_history.append({"tool": t_name, "input": t_input,
+                                         "result_summary": f"ERROR: Unknown tool '{t_name}'"})
                     continue
-                
-                # Duplicate query detection — block exact duplicates only
                 call_key = (t_name, t_input.strip().lower())
                 if call_key in seen_calls:
-                    print(f"  Step {step}: BLOCKED exact duplicate: '{t_input}'")
-                    trace.append({"step": step, "state": "BLOCKED", "reason": "Exact duplicate query", "input": t_input})
-                    tool_history.append({"tool": t_name, "input": t_input, "result_summary": "BLOCKED: You already made this exact call. Use the existing results or try a DIFFERENT query."})
+                    tool_history.append({"tool": t_name, "input": t_input,
+                                         "result_summary": "BLOCKED: Duplicate. Try different query."})
                     continue
                 seen_calls.add(call_key)
-
                 if tool_call_count >= self.MAX_STEPS:
-                    trace.append({"step": step, "state": "ERROR", "error": "Hard cap reached"})
                     break
                 tool_call_count += 1
-                
-                print(f"  Step {step}: tool={t_name} input='{t_input}'")
-
-                # --- Robust error handling: retry once, then inform LLM for fallback ---
-                result = None
-                tool_error = None
-                for attempt in range(1, 3):  # attempt 1 = first try, attempt 2 = retry
-                    try:
-                        result = self.tools[t_name].run(t_input)
-                        tool_error = None
-                        break  # success — exit retry loop
-                    except Exception as e:
-                        tool_error = e
-                        if attempt == 1:
-                            print(f"  [Tool '{t_name}' failed (attempt 1), retrying once...]")
-                            trace.append({"step": step, "state": "RETRY", "tool": t_name, 
-                                          "error": f"{type(e).__name__}: {e}", "attempt": attempt})
-                            time.sleep(1)  # brief pause before retry
-                        else:
-                            print(f"  [Tool '{t_name}' failed again (attempt 2), giving up]")
-
-                if tool_error is not None:
-                    # Both attempts failed — log and inform LLM to fall back or give partial answer
-                    error_msg = f"{type(tool_error).__name__}: {tool_error}"
-                    trace.append({"step": step, "state": "ERROR", "tool": t_name, 
-                                  "error": f"Tool failed after retry: {error_msg}"})
-                    tool_history.append({"tool": t_name, "input": t_input, 
-                                         "result_summary": f"ERROR: Tool failed — {error_msg}. Try a DIFFERENT tool or provide final_answer with what you have."})
-                    continue  # skip to next LLM decision — let it choose fallback
-
-                # Truncate result for context efficiency (1000 chars to preserve key info)
-                result_summary = str(result)[:1000]
-                trace.append({"step": step, "state": "ACT", "tool": t_name, "input": t_input, "result": str(result)[:300]})
-                tool_history.append({"tool": t_name, "input": t_input, "result_summary": result_summary})
-            
+                print(f"  Step {tool_call_count}: tool={t_name} input='{t_input}'")
+                result, err = self._run_tool_with_retry(t_name, t_input)
+                if err:
+                    tool_history.append({"tool": t_name, "input": t_input,
+                                         "result_summary": f"ERROR: {err}. Try different tool."})
+                    continue
+                trace.append({"step": step, "state": "ACT", "tool": t_name,
+                              "input": t_input, "result": str(result)[:300]})
+                tool_history.append({"tool": t_name, "input": t_input,
+                                     "result_summary": str(result)[:1000]})
             else:
                 trace.append({"step": step, "state": "ERROR", "error": f"Unknown action: {action}"})
 
-        # 5. Hard cap fallback — raise exception as required by rubric
-        raise RuntimeError(
-            f"Agent exceeded maximum of {self.MAX_STEPS} tool calls. "
-            f"Used {tool_call_count}/{self.MAX_STEPS} tool calls across {step} LLM iterations."
-        )
+        raise RuntimeError(f"Agent exceeded {self.MAX_STEPS} tool calls. "
+                           f"Used {tool_call_count}/{self.MAX_STEPS} across {step} iterations.")
 
 def print_trace(result: dict):
     """Pretty-print the agent trace in the assignment-required format."""
