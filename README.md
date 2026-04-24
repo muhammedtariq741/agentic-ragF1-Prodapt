@@ -1,4 +1,4 @@
-# F1 Agentic RAG 🏎️💨
+# F1 Agentic RAG 
 
 > Ask any question about the 2024–2025 Formula 1 seasons — stats, strategies, race narratives, or live news — and an autonomous AI agent decides which tools to call, gathers the evidence, and composes a cited answer. All in ≤ 8 steps.
 
