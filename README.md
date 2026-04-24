@@ -102,8 +102,6 @@ The system uses a **Plan + Scratchpad + Reflection** agent loop — not a black-
 
 ### The Agent Loop (`main.py` → `F1Agent.run()`)
 
-The core loop is ~130 lines of Python. It:
-
 1. **Receives** a user question
 2. **Builds** a context prompt with the scratchpad memory and all prior tool results
 3. **Calls the LLM** (Groq Llama-3.3-70B) to decide: which tool to call, or return `final_answer`
