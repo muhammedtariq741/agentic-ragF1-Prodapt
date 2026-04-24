@@ -70,10 +70,10 @@ The system uses a **Plan + Scratchpad + Reflection** agent loop — not a black-
                     ┌─────────────────────────────┐
                     │  LLM Reasoning (Groq 70B)   │
                     │  ┌───────────────────────┐  │
-                    │  │ Scratchpad:            │  │
-                    │  │  known: {...}          │  │
-                    │  │  missing: [...]        │  │
-                    │  │  conflicts: [...]      │  │
+                    │  │ Scratchpad:           │  │
+                    │  │  known: {...}         │  │
+                    │  │  missing: [...]       │  │
+                    │  │  conflicts: [...]     │  │
                     │  └───────────────────────┘  │
                     └─────────┬───────────────────┘
                               │ JSON decision
@@ -208,3 +208,11 @@ See [`evaluation/eval_report.md`](evaluation/eval_report.md) for detailed result
 ## Interesting Observations
 
 During testing, we noticed the agent inconsistently routes "total wins" questions. For Hamilton, it correctly used `web_search` (returning 105 career wins). For Verstappen, it used `query_data` — returning only 17 (2024-2025 wins), not his career total of ~63. The same question pattern, two different tool choices. This is a known attention bias in autoregressive models: the LLM's prior association between "Verstappen" and "database" (since he appears frequently in our local data) biased the routing decision. We fixed this by adding an explicit system prompt rule distinguishing career stats from season stats.
+
+
+## AI Coding Assistant Disclosure
+In accordance with project guidelines, I am disclosing the use of AI coding assistants (GitHub Copilot, ChatGPT, and Claude) during the development of this project. 
+These tools were used primarily for:
+- Boilerplate generation and refactoring Python structures.
+- Iterating on the system prompt design and JSON-parsing regex logic.
+- Troubleshooting platform-specific bugs (e.g., terminal output leakage on Windows vs. Mac).
