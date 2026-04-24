@@ -255,15 +255,45 @@ def ingest_external_documents():
 # ---------------------------------------------------------------------------
 # Phase 5: Build Vector Store
 # ---------------------------------------------------------------------------
+def build_sqlite_db():
+    """Build the SQLite database from the committed CSV file (if not already built)."""
+    banner("Phase 5a — Building SQLite Database")
+    db_path = os.path.join(PROJECT_DIR, "data", "structured", "f1_results.db")
+    csv_path = os.path.join(PROJECT_DIR, "data", "structured", "f1_results.csv")
+
+    if os.path.exists(db_path):
+        success("SQLite database already exists.")
+        return
+
+    if not os.path.exists(csv_path):
+        error("f1_results.csv not found — cannot build database.")
+        sys.exit(1)
+
+    step("Building SQLite database from f1_results.csv...")
+    try:
+        result = subprocess.run(
+            [VENV_PYTHON, "-m", "indexing.load_data"],
+            check=True, capture_output=True, text=True,
+            cwd=PROJECT_DIR
+        )
+        for line in result.stdout.strip().split("\n"):
+            if line.strip():
+                print(f"    {line}")
+        success("SQLite database built successfully.")
+    except subprocess.CalledProcessError as e:
+        error(f"Database build failed:\n{e.stderr}")
+        sys.exit(1)
+
+
 def build_vector_store(force_rebuild: bool = False):
     """Build or rebuild the ChromaDB vector store."""
-    banner("Phase 5 — Building Vector Store")
+    banner("Phase 5b — Building Vector Store")
 
     if os.path.exists(VECTOR_STORE_DIR) and not force_rebuild:
         success("Vector store already exists.")
         if not ask_yes_no("Rebuild from scratch?", default=False):
             return
-    
+
     step("Embedding documents into ChromaDB (this may take 30-60 seconds)...")
 
     try:
@@ -272,7 +302,6 @@ def build_vector_store(force_rebuild: bool = False):
             check=True, capture_output=True, text=True,
             cwd=PROJECT_DIR
         )
-        # Print embed_docs output
         for line in result.stdout.strip().split("\n"):
             if line.strip():
                 print(f"    {line}")
@@ -299,8 +328,17 @@ def launch_agent():
       • Max 8 tool calls per question
     """))
 
-    # Hand off to main.py — use os.execv to replace this process
-    os.execv(VENV_PYTHON, [VENV_PYTHON, os.path.join(PROJECT_DIR, "main.py")])
+    # Use subprocess.run instead of os.execv for cross-platform compatibility.
+    # os.execv on Windows spawns a child process rather than replacing the
+    # current one, which causes stdin to be shared between both processes —
+    # typed input leaks back to the Windows CMD shell.
+    try:
+        subprocess.run(
+            [VENV_PYTHON, os.path.join(PROJECT_DIR, "main.py")],
+            cwd=PROJECT_DIR
+        )
+    except KeyboardInterrupt:
+        print(f"\n{CYAN}Goodbye! 🏁{RESET}")
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +364,10 @@ def main():
     # Phase 4: Optional external docs
     docs_added = ingest_external_documents()
 
-    # Phase 5: Vector store
+    # Phase 5a: SQLite database (built from committed CSV — never in git as .db)
+    build_sqlite_db()
+
+    # Phase 5b: Vector store
     build_vector_store(force_rebuild=bool(docs_added))
 
     # Phase 6: Launch
