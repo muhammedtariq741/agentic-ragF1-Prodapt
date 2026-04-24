@@ -86,7 +86,16 @@ class QueryDataTool(BaseTool):
 
     def run(self, query: str) -> str:
         if not os.path.exists(DB_PATH):
-            return "ERROR: Database not found. Run 'python -m indexing.load_data' first."
+            # Auto-build the DB from the committed CSV on first run (fresh clone)
+            csv_path = "data/structured/f1_results.csv"
+            if not os.path.exists(csv_path):
+                return "ERROR: Neither f1_results.db nor f1_results.csv found. Please run 'python -m indexing.fetch_f1_data' to fetch data first."
+            try:
+                from indexing.load_data import load_csv_to_sqlite
+                print("  [query_data] DB not found — auto-building from CSV...")
+                load_csv_to_sqlite(csv_path=csv_path, db_path=DB_PATH)
+            except Exception as e:
+                return f"ERROR: Failed to auto-build database: {e}"
 
         # Guard: block raw SQL injection in the user query itself
         query_upper = query.upper()
