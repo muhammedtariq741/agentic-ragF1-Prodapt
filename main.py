@@ -143,6 +143,7 @@ class F1Agent:
         self.system_prompt = SYSTEM_PROMPT.format(
             tool_descriptions=build_tool_descriptions(self.tools)
         )
+        self.telemetry = {name: {"calls": 0, "ms": 0} for name in self.tools}
 
     def _build_context(self, question, tool_history, memory):
         """Build the LLM user prompt from scratch each iteration."""
@@ -266,8 +267,12 @@ class F1Agent:
                 if tool_call_count >= self.MAX_STEPS:
                     break
                 tool_call_count += 1
-                print(f"  Step {tool_call_count}: tool={t_name} input='{t_input}'")
+                t0 = time.time()
                 result, err = self._run_tool_with_retry(t_name, t_input)
+                elapsed = round((time.time() - t0) * 1000)
+                self.telemetry[t_name]["calls"] += 1
+                self.telemetry[t_name]["ms"] += elapsed
+                print(f"  Step {tool_call_count}: tool={t_name} ({elapsed}ms) input='{t_input}'")
                 if err:
                     tool_history.append({"tool": t_name, "input": t_input,
                                          "result_summary": f"ERROR: {err}. Try different tool."})
@@ -282,7 +287,7 @@ class F1Agent:
         raise RuntimeError(f"Agent exceeded {self.MAX_STEPS} tool calls. "
                            f"Used {tool_call_count}/{self.MAX_STEPS} across {step} iterations.")
 
-def print_trace(result: dict):
+def print_trace(result: dict, agent: F1Agent = None):
     """Pretty-print the agent trace in the assignment-required format."""
     print("\n" + "=" * 70)
     print(f"Question: {result['question']}")
@@ -311,6 +316,12 @@ def print_trace(result: dict):
     print(f"Final Answer: {result['answer']}")
     print(f"Citations: {result['citations']}")
     print(f"Steps used: {result['steps_used']} / {F1Agent.MAX_STEPS} max")
+    if agent:
+        print(f"\n  {'Tool':<15} {'Calls':>6} {'Avg ms':>8}")
+        print(f"  {'-'*32}")
+        for tool, stats in agent.telemetry.items():
+            avg = stats['ms'] // stats['calls'] if stats['calls'] else 0
+            print(f"  {tool:<15} {stats['calls']:>6} {avg:>7}ms")
     print("=" * 70)
 
 
@@ -336,7 +347,7 @@ def main():
         except RuntimeError as e:
             result = {"question": question, "answer": f"REFUSAL: {e}", 
                       "citations": "None", "trace": [], "steps_used": F1Agent.MAX_STEPS}
-        print_trace(result)
+        print_trace(result, agent)
     else:
         # Interactive mode
         print("=" * 50)
@@ -359,7 +370,7 @@ def main():
             except RuntimeError as e:
                 result = {"question": question, "answer": f"REFUSAL: {e}", 
                           "citations": "None", "trace": [], "steps_used": F1Agent.MAX_STEPS}
-            print_trace(result)
+            print_trace(result, agent)
 
 
 if __name__ == "__main__":
