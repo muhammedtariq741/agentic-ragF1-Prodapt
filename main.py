@@ -206,13 +206,47 @@ class F1Agent:
 
             # 4. Route Action
             if action == "final_answer":
+                proposed_answer = decision.get("answer", "None")
+                
+                # --- BONUS C: Post-Answer Self-Critique ---
+                print("  [CRITIQUE & FIX] Reviewing proposed final answer...")
+                critique_sys_prompt = (
+                    "You are an expert F1 evaluator. Critique the proposed answer based ONLY on the provided tool results. "
+                    "Look for hallucinations, missing context, or failures to directly answer the user's question. "
+                    "If the answer is perfect, return it exactly as is. If it has flaws, return a corrected version. "
+                    'Respond with JSON: {"critique": "your analysis", "answer": "the final answer"}'
+                )
+                
+                critique_user_prompt = f"Original Question: {question}\n\nTool Results:\n"
+                for th in tool_history:
+                    critique_user_prompt += f"Tool: {th['tool']} | Result: {th['result_summary']}\n"
+                critique_user_prompt += f"\nProposed Answer: {proposed_answer}"
+                
+                try:
+                    critique_raw = generate_llm_response(critique_sys_prompt, critique_user_prompt)
+                    critique_json = parse_llm_json(critique_raw)
+                    final_answer = critique_json.get("answer", proposed_answer)
+                    critique_note = critique_json.get("critique", "No critique provided.")
+                except Exception as e:
+                    final_answer = proposed_answer
+                    critique_note = f"Critique failed: {e}"
+
+                trace.append({
+                    "step": "FINAL", 
+                    "state": "CRITIQUE & FIX", 
+                    "original_answer": proposed_answer, 
+                    "critique": critique_note, 
+                    "fixed_answer": final_answer
+                })
+                
                 grounded = [f"{e['tool']} (input: '{e['input']}')" 
                             for e in trace if e.get("state") == "ACT"]
                 grounded_str = "; ".join(grounded) if grounded else "None"
                 llm_citations = decision.get("citations", "")
                 if isinstance(llm_citations, list):
                     llm_citations = ", ".join(str(c) for c in llm_citations)
-                return {"question": question, "answer": decision.get("answer", "None"), 
+                    
+                return {"question": question, "answer": final_answer, 
                         "citations": grounded_str + " | LLM note: " + str(llm_citations), "trace": trace, "steps_used": tool_call_count}
             
             elif action == "tool_call":
@@ -301,6 +335,9 @@ def print_trace(result: dict):
             print(f"           result={preview}...")
         elif state == "ERROR":
             print(f"  Step {step} [ERROR]: {entry.get('error')}")
+        elif state == "CRITIQUE & FIX":
+            print(f"  [CRITIQUE & FIX] Original: {entry.get('original_answer')[:100]}...")
+            print(f"                   Critique: {entry.get('critique')}")
     print("-" * 70)
     print(f"Final Answer: {result['answer']}")
     print(f"Citations: {result['citations']}")
