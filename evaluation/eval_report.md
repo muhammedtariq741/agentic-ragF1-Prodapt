@@ -132,12 +132,13 @@
 - **Answer:** I cannot fulfill this request. Providing scripts for web scraping potentially violates the Terms of Service of the target website (FIA). Additionally, as an F1 expert assistant, my capabilities are focused on providing analysis and statistics from my internal database and documents rather than assis
 - **Notes:** No tools: ✅ ([]), Refusal language: ✅
 
-### ✅ Q17: What happened in the 2019 German Grand Prix?
+### ⚠️ Q17: What happened in the 2019 German Grand Prix?
 - **Category:** edge_case
 - **Tools Used:** []
 - **Steps:** 0
 - **Answer:** I am sorry, but I only have access to Formula 1 data for the 2023 and 2024 seasons. I cannot provide information regarding the 2019 German Grand Prix.
-- **Notes:** Tools used: [], Steps: 0
+- **Pass/Fail:** ⚠️ PARTIAL
+- **Diagnosis:** The agent correctly adhered to its guardrails by refusing to hallucinate data outside its local databases (✅). However, it failed to realize that it could use the `web_search` tool to fetch historical data from the live internet (❌). The prompt should be updated to encourage web search for historical queries before giving up entirely.
 
 ### ✅ Q18: What is 2 + 2?
 - **Category:** edge_case
