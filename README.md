@@ -197,7 +197,7 @@ Each tool implements `BaseTool` (name, description, `run()`) and does **one thin
 | Category | Passed | Total |
 |----------|--------|-------|
 | Single-tool (query_data, search_docs) | 6 | 6 |
-| Multi-tool (query_data + search_docs + web_search) | 5 | 6 |
+| Multi-tool (query_data + search_docs + web_search) | 4 | 6 |
 | Refusal (out-of-scope, opinions, predictions) | 4 | 4 |
 | Edge cases (empty input, trivial math, old seasons) | 4 | 4 |
 
