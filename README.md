@@ -215,4 +215,9 @@ In accordance with project guidelines, I am disclosing the use of AI coding assi
 These tools were used primarily for:
 - Boilerplate generation and refactoring Python structures.
 - Iterating on the system prompt design and JSON-parsing regex logic.
-- Troubleshooting platform-specific bugs (e.g., terminal output leakage on Windows vs. Mac).
+- Troubleshooting platform-specific bugs (e.g., terminal output leakage on Windows vs. Mac)
+
+## Demo of Agent working
+
+https://youtu.be/Y7FePuDsFY0
+
