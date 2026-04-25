@@ -9,7 +9,7 @@
 | single_tool | 6 | 6 | 100% |
 | multi_tool | 5 | 6 | 83% |
 | refusal | 4 | 4 | 100% |
-| edge_case | 4 | 4 | 100% |
+| edge_case | 3 | 4 | 83% |
 
 ## Detailed Results
 
