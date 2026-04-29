@@ -2,6 +2,7 @@
 import os
 
 import chromadb
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 from tools.base import BaseTool
 
@@ -34,7 +35,11 @@ class SearchDocsTool(BaseTool):
             # Step 1: Search ChromaDB (it will embed the query automatically)
             client = chromadb.PersistentClient(path=VECTOR_STORE_PATH)
             try:
-                collection = client.get_collection(COLLECTION_NAME)
+                emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+                collection = client.get_collection(
+                    name=COLLECTION_NAME,
+                    embedding_function=emb_fn
+                )
             except Exception:
                 return f"ERROR: Collection '{COLLECTION_NAME}' not found. Run 'python -m indexing.embed_docs' first."
             results = collection.query(

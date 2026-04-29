@@ -84,16 +84,14 @@ Loaded 20 evaluation questions.
   ✅ Q8 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'search_docs', 'search_docs', 'search_docs']), Keyword: ✅
 
 ============================================================
-  [9/20] How did McLaren perform in the 2024 constructors standings, and what was their development strategy?
+  [9/20] why was brazil 2024 considered the best drive and win for verstappen?
 ============================================================
-  Step 1: tool=query_data input='SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 AND constructor = 'McLaren' GROUP BY constructor'
-  [query_data] SQL: SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 AND constructor = 'McLaren' GROUP BY constructor
-  Step 2: tool=query_data input='SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 GROUP BY constructor ORDER BY total_points DESC'
-  [query_data] SQL: SELECT constructor, SUM(points) as total_points FROM race_results WHERE season = 2024 GROUP BY constructor ORDER BY total_points DESC
-  Step 3: tool=search_docs input='McLaren 2024 F1 development strategy and season performance analysis'
-  Step 4: tool=search_docs input='McLaren F1 2024 development strategy analysis'
-  Step 5: tool=search_docs input='McLaren F1 2024 development strategy analysis upgrade packages'
-  ✅ Q9 [multi_tool]: Tools: ✅ (expected ['query_data', 'search_docs'], got ['query_data', 'query_data', 'search_docs', 'search_docs', 'search_docs']), Keyword: ✅
+  Step 1: tool=search_docs input='why was Brazil 2024 considered the best drive and win for Verstappen'
+  Step 2: tool=search_docs input='Verstappen best drive and win 2024 Brazil Grand Prix'
+  Step 3: tool=search_docs input='Verstappen drive and win 2024 Brazilian Grand Prix analysis'
+  Step 4: tool=search_docs input='Verstappen Brazil 2024 drive and win analysis'
+  Step 5: tool=web_search input='Verstappen Brazil 2024 drive and win analysis'
+  ✅ Q9 [multi_tool]: Tools: ✅ (expected ['search_docs', 'web_search'], got ['search_docs', 'search_docs', 'search_docs', 'search_docs', 'web_search']), Keyword: ✅
 
 ============================================================
   [10/20] Who won the 2024 Brazilian Grand Prix and what were the race conditions like?

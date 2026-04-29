@@ -2,6 +2,7 @@
 import os
 
 import chromadb
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -69,7 +70,11 @@ def embed_documents():
     except Exception:
         pass
 
-    collection = client.create_collection(COLLECTION_NAME)
+    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    collection = client.create_collection(
+        name=COLLECTION_NAME,
+        embedding_function=emb_fn
+    )
     collection.add(
         documents=all_chunks,
         metadatas=all_metadata,

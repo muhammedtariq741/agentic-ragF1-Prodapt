@@ -8,6 +8,8 @@ Usage:
     python main.py "Who won the 2024 British Grand Prix?"
     python main.py                          # interactive mode
 """
+import chromadb
+from chromadb.utils import embedding_functions
 import json
 import os
 import re
@@ -26,57 +28,41 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # System prompt — injected once at the start of every conversation
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """You are an expert Formula 1 assistant. You have access to three tools.
+SYSTEM_PROMPT = """You are an expert Formula 1 assistant with 3 tools.
 
 TOOLS:
 {tool_descriptions}
 
-DATABASE SCHEMA (for query_data tool):
-Table: race_results
-Columns: season (INT, 2024 or 2025), round (INT), grand_prix (TEXT, e.g. "Bahrain Grand Prix"), circuit (TEXT), date (TEXT), driver (TEXT, full name), driver_code (TEXT, 3-letter), driver_nationality (TEXT), constructor (TEXT, team name), grid_position (INT), finish_position (INT, 1=winner), position_text (TEXT, "1" or "R" for retired), points (REAL), laps_completed (INT), status (TEXT), fastest_lap_rank (TEXT), fastest_lap_time (TEXT)
+SCHEMA (for query_data — pass raw SQL as input):
+Table: race_results — Columns: season (INT, 2024/2025), round, grand_prix (TEXT), circuit, date, driver (TEXT, full name), driver_code (3-letter), driver_nationality, constructor (team), grid_position, finish_position (1=winner), position_text ("1"/"R"=retired), points (REAL), laps_completed, status, fastest_lap_rank, fastest_lap_time
 
-F1 Location Mapping:
-  "Abu Dhabi"/"Yas Marina" → grand_prix="Abu Dhabi Grand Prix" | "Australia"/"Melbourne" → "Australian Grand Prix" | "Austria"/"Spielberg" → "Austrian Grand Prix" | "Azerbaijan"/"Baku" → "Azerbaijan Grand Prix" | "Bahrain" → "Bahrain Grand Prix" | "Belgium"/"Spa" → "Belgian Grand Prix" | "Britain"/"Silverstone" → "British Grand Prix" | "Canada"/"Montreal" → "Canadian Grand Prix" | "China"/"Shanghai" → "Chinese Grand Prix" | "Netherlands"/"Zandvoort" → "Dutch Grand Prix" | "Imola" → "Emilia Romagna Grand Prix" | "Hungary"/"Budapest" → "Hungarian Grand Prix" | "Italy"/"Monza" → "Italian Grand Prix" | "Japan"/"Suzuka" → "Japanese Grand Prix" | "Las Vegas" → "Las Vegas Grand Prix" | "Mexico" → "Mexico City Grand Prix" | "Miami" → "Miami Grand Prix" | "Monaco" → "Monaco Grand Prix" | "Qatar"/"Lusail" → "Qatar Grand Prix" | "Saudi Arabia"/"Jeddah" → "Saudi Arabian Grand Prix" | "Singapore" → "Singapore Grand Prix" | "Spain"/"Barcelona" → "Spanish Grand Prix" | "Brazil"/"Interlagos" → "São Paulo Grand Prix" | "USA"/"Austin"/"COTA" → "United States Grand Prix"
+RESPONSE FORMAT — reply ONLY with valid JSON:
+Tool call: {{"scratchpad": {{"known": {{...}}, "missing": [...], "conflicts": []}}, "action": "tool_call", "tool": "<name>", "input": "<query>"}}
+Final answer: {{"scratchpad": {{"known": {{...}}, "missing": [], "conflicts": []}}, "action": "final_answer", "answer": "<text>", "citations": "<sources>"}}
 
-RESPONSE FORMAT — you MUST reply with valid JSON, nothing else.
+For query_data, pass raw SQL: "SELECT driver FROM race_results WHERE grand_prix = 'British Grand Prix' AND season = 2024 AND finish_position = 1"
+For search_docs/web_search, pass natural language: "why did Norris win Miami 2024"
 
-Every time you respond, you MUST use the following format. First, use a "scratchpad" to reflect on previous tool results and plan your next step. Then, provide your action.
+SQL RULES:
+- SELECT only. Use LIKE for partial names. finish_position=1 for wins, <=3 for podiums.
+- Use SUM(points) GROUP BY driver for totals. Each row = one race result, NOT season total.
+- Monza = Italian GP, Imola = Emilia Romagna GP (different races).
+- Use exact grand_prix names (e.g. "British Grand Prix", "São Paulo Grand Prix").
 
-To call query_data, pass a raw SQL SELECT query as the input:
-{{"scratchpad": {{"known": {{...}}, "missing": [...], "conflicts": []}}, "action": "tool_call", "tool": "query_data", "input": "SELECT driver, points FROM race_results WHERE grand_prix = 'Miami Grand Prix' AND season = 2024"}}
-
-To call search_docs or web_search, pass a natural language query:
-{{"scratchpad": {{"known": {{...}}, "missing": [...], "conflicts": []}}, "action": "tool_call", "tool": "search_docs", "input": "why did Norris win Miami 2024"}}
-
-To give the final answer (after you have enough information):
-{{"scratchpad": {{"known": {{...}}, "missing": [], "conflicts": []}}, "action": "final_answer", "answer": "<your answer text>", "citations": "<which tools/sources provided the info>"}}
-
-SQL RULES for query_data:
-- ONLY generate SELECT queries. No DROP, DELETE, UPDATE, INSERT.
-- Use LIKE for partial text matching (e.g., driver LIKE '%Verstappen%').
-- Use the location mapping above to match grand_prix values exactly.
-- For "wins", use finish_position = 1.
-- For "podiums", use finish_position <= 3 (P1, P2, and P3 are ALL podiums — wins count as podiums).
-- "Monza" = Italian GP, "Imola" = Emilia Romagna GP (different races).
-- For "total points", "championship standings", or "season points", ALWAYS use SUM(points) with GROUP BY driver. Each row in the table is ONE race result, not a season total.
-- For "total wins" or "how many wins", use COUNT(*) with GROUP BY and finish_position = 1.
+TOOL ROUTING:
+- 2024/2025 stats (points, wins, positions) → query_data FIRST
+- Why/how/strategy/narrative → search_docs
+- Post-2025, live standings, breaking news → web_search
+- Career stats without specifying 2024/2025 → search_docs or web_search (DB only has 2024-2025)
 
 RULES:
-1. Think step-by-step. Call ONE tool at a time.
-2. After receiving a tool result, decide: do you have enough info, or do you need another tool?
-3. For questions about 2024 or 2025 race STATISTICS (points, positions, wins, podiums), use query_data FIRST. The database contains BOTH 2024 AND 2025 season data.
-4. For questions about WHY something happened, narratives, or strategies, use search_docs.
-5. For questions about events AFTER 2025, breaking news, or live standings, use web_search.
-6. YOU ARE AN F1 AGENT ONLY. REFUSE to answer ANY questions that are not related to Formula 1 (e.g., jokes, general knowledge, movies, math). Return a final_answer explaining you only answer F1 questions.
-7. REFUSE to answer: investment advice, personal opinions on which team is "best", predictions, or anything outside your capability. Return a final_answer explaining why you cannot answer.
-8. If a question asks about data you do NOT have (e.g., seasons before 2024), say so honestly. Do NOT hallucinate.
-9. You have a MAXIMUM of 8 tool calls. Use them wisely.
-10. Always cite your sources in the final answer.
-11. SANITY CHECK: If query_data returns a suspiciously low number (e.g., a "season total" of 25 points), your SQL is probably wrong. Try rewriting the query with SUM() and GROUP BY, or fall back to web_search.
-12. CRITICAL — CAREER STATS vs SEASON STATS: The database ONLY contains race-by-race results for the 2024 and 2025 seasons. It does NOT store career totals or historical records. If a question asks about "total wins", "career wins", "how many wins does X have", "total podiums", or "how many championships/titles" WITHOUT specifying a season (2024 or 2025), you MUST use search_docs or web_search — NEVER query_data. query_data will only return 2024-2025 counts, which is NOT the career total. Only use query_data when the question explicitly mentions 2024 or 2025.
-13. ANTI-HALLUCINATION: NEVER invent or guess specific numbers (titles, stats, dates) that are not EXPLICITLY stated in a tool result. If a web_search result does not contain the exact number you need, either do another web_search with a more specific query, or say "I could not find the exact figure." Quoting approximate or partial info from the source is fine, but fabricating precise numbers is FORBIDDEN.
-14. FORMAT: Round all decimal numbers to 2 decimal places in your final answer (e.g., 7.041666... → 7.04).
-15. ANTI-LAZINESS: You MUST make at least 2 different tool calls before concluding "I could not find the answer." If the first search returns insufficient data, try a different query or a different tool. Only give up after genuinely exhausting your options.
+1. Call ONE tool at a time, max 8 calls. Cite sources in final answer.
+2. F1 ONLY. Refuse non-F1 questions, predictions, investment advice, code generation.
+3. Never hallucinate numbers. If data not found after 2+ tool calls with different tools, say so honestly.
+4. If query_data returns suspiciously low numbers, rewrite SQL with SUM/GROUP BY or try web_search.
+5. Round decimals to 2 places.
+6. ANTI-LAZINESS: If a tool returns insufficient data, you MUST switch to a DIFFERENT tool type on the next call (e.g., search_docs failed → try web_search or query_data). Never call the same tool 3+ times in a row with similar queries. Try at least 2 different tool types before giving up.
+7. For multi-part questions, break them down and address each sub-question with targeted tool calls.
 """
 
 
@@ -144,7 +130,19 @@ class F1Agent:
             tool_descriptions=build_tool_descriptions(self.tools)
         )
         self.telemetry = {name: {"calls": 0, "ms": 0} for name in self.tools}
-
+        self.session_telemetry = {name: {"calls": 0, "ms": 0} for name in self.tools}
+        
+        # Load semantic cache via ChromaDB
+        try:
+            self.cache_client = chromadb.PersistentClient(path="data/semantic_cache")
+            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            self.cache_collection = self.cache_client.get_or_create_collection(
+                name="query_cache",
+                embedding_function=emb_fn
+            )
+        except Exception as e:
+            print(f"Warning: Could not initialize semantic cache: {e}")
+            self.cache_collection = None
     def _build_context(self, question, tool_history, memory):
         """Build the LLM user prompt from scratch each iteration."""
         parts = [f"User question: {question}"]
@@ -205,6 +203,67 @@ class F1Agent:
         trace, tool_history, seen_calls = [], [], set()
         memory = {"known": {}, "missing": [], "conflicts": []}
         tool_call_count = 0
+        self.telemetry = {name: {"calls": 0, "ms": 0} for name in self.tools}
+
+        # -1. Deterministic Guardrail — refuse obviously non-F1 questions WITHOUT calling the LLM
+        F1_KEYWORDS = {
+            "f1", "formula 1", "formula one", "grand prix", "gp", "race", "driver", "constructor",
+            "championship", "podium", "pole", "qualifying", "sprint", "pit stop", "pitstop",
+            "fastest lap", "drs", "fia", "kers", "ers", "safety car", "red flag",
+            "verstappen", "hamilton", "norris", "leclerc", "sainz", "piastri", "russell",
+            "alonso", "stroll", "ricciardo", "tsunoda", "gasly", "ocon", "magnussen",
+            "hulkenberg", "bottas", "zhou", "albon", "sargeant", "perez", "lawson",
+            "bearman", "colapinto", "doohan", "antonelli", "hadjar", "bortoleto",
+            "red bull", "mercedes", "ferrari", "mclaren", "aston martin", "alpine",
+            "williams", "haas", "racing bulls", "sauber", "kick sauber", "cadillac",
+            "silverstone", "monza", "spa", "monaco", "interlagos", "suzuka", "baku",
+            "jeddah", "bahrain", "imola", "zandvoort", "hungaroring", "cota", "las vegas",
+            "season", "standings", "points", "wins", "laps", "grid", "finish",
+            "2023", "2024", "2025", "2026"
+        }
+        q_lower = question.lower()
+        has_f1_context = any(kw in q_lower for kw in F1_KEYWORDS)
+
+        # Hard-block questions that are clearly not F1-related
+        NON_F1_TRIGGERS = [
+            "invest", "stock", "crypto", "bitcoin",
+            "recipe", "cook", "weather today", "write me a", "code", "script",
+            "hack", "password", "kill", "bomb", "drug",
+            "what is 2 + 2", "what is 2+2", "2 + 2", "2+2",
+            "movie", "song", "lyrics", "homework",
+        ]
+        is_blocked = any(trigger in q_lower for trigger in NON_F1_TRIGGERS)
+
+        if is_blocked or (not has_f1_context and len(question.split()) > 2):
+            # Check if it's a simple math/non-F1 question
+            if "2 + 2" in q_lower or "2+2" in q_lower:
+                refusal = "4. But I am an F1 expert assistant — I can only answer questions related to Formula 1 racing, statistics, and events."
+            elif is_blocked:
+                refusal = "I am an F1 expert assistant. I can only answer questions related to Formula 1 racing, statistics, and events. I cannot help with this type of question."
+            else:
+                refusal = "I am an F1 expert assistant. I can only answer questions related to Formula 1 racing, statistics, and events. Please ask me about F1!"
+            trace.append({"step": 0, "state": "GUARDRAIL", "result": "Non-F1 question detected — refused without LLM call"})
+            return {"question": question, "answer": refusal, "citations": "None (deterministic guardrail)",
+                    "trace": trace, "steps_used": 0}
+
+        # 0. Check Semantic Cache
+        if self.cache_collection is not None:
+            try:
+                results = self.cache_collection.query(query_texts=[question], n_results=1)
+                if results["distances"] and results["distances"][0] and results["distances"][0][0] < 0.15:
+                    # Semantic Hit! (Cosine distance < 0.15 means > 85% strict semantic similarity)
+                    cached_data = json.loads(results["metadatas"][0][0]["response_json"])
+                    ans = cached_data.get("answer", "No answer found in cache.")
+                    cits = cached_data.get("citations", "Cache")
+                    cached_trace = cached_data.get("trace", [{"step": 0, "state": "CACHE HIT", "result": "Hit"}])
+                    steps_used = cached_data.get("steps_used", 0)
+                    
+                    # Prepend the CACHE HIT notification to the trace
+                    cached_trace.insert(0, {"step": 0, "state": "CACHE HIT", "result": f"Semantically matched previous query (distance: {results['distances'][0][0]:.3f})"})
+                    
+                    return {"question": question, "answer": ans, "citations": cits, "trace": cached_trace, "steps_used": steps_used}
+            except Exception as e:
+                print(f"Cache read error: {e}")
 
         for step in range(1, self.MAX_STEPS * 2 + 1):
             # 1. Ask LLM
@@ -272,6 +331,8 @@ class F1Agent:
                 elapsed = round((time.time() - t0) * 1000)
                 self.telemetry[t_name]["calls"] += 1
                 self.telemetry[t_name]["ms"] += elapsed
+                self.session_telemetry[t_name]["calls"] += 1
+                self.session_telemetry[t_name]["ms"] += elapsed
                 print(f"  Step {tool_call_count}: tool={t_name} ({elapsed}ms) input='{t_input}'")
                 if err:
                     tool_history.append({"tool": t_name, "input": t_input,
@@ -317,11 +378,14 @@ def print_trace(result: dict, agent: F1Agent = None):
     print(f"Citations: {result['citations']}")
     print(f"Steps used: {result['steps_used']} / {F1Agent.MAX_STEPS} max")
     if agent:
-        print(f"\n  {'Tool':<15} {'Calls':>6} {'Avg ms':>8}")
-        print(f"  {'-'*32}")
-        for tool, stats in agent.telemetry.items():
-            avg = stats['ms'] // stats['calls'] if stats['calls'] else 0
-            print(f"  {tool:<15} {stats['calls']:>6} {avg:>7}ms")
+        print(f"\n  {'Tool':<15} {'Calls':>6} {'Avg ms':>8}  │ {'Session':>7} {'Avg ms':>8}")
+        print(f"  {'-'*55}")
+        for tool in agent.telemetry:
+            q = agent.telemetry[tool]
+            s = agent.session_telemetry[tool]
+            q_avg = q['ms'] // q['calls'] if q['calls'] else 0
+            s_avg = s['ms'] // s['calls'] if s['calls'] else 0
+            print(f"  {tool:<15} {q['calls']:>6} {q_avg:>7}ms  │ {s['calls']:>7} {s_avg:>7}ms")
     print("=" * 70)
 
 

@@ -154,12 +154,12 @@
 - **Answer:** Charles Leclerc won the 2024 Monaco Grand Prix driving for Ferrari. The race strategy for Monaco is typically dictated by the extreme difficulty of overtaking on the tight street circuit, meaning track position is paramount. In 2024, teams primarily focused on a one-stop strategy, as the track chara
 - **Notes:** Tools used: ['query_data', 'search_docs', 'search_docs', 'search_docs', 'web_search'], Steps: 5
 
-### ✅ Q20: (empty)
-- **Category:** edge_case
-- **Tools Used:** []
-- **Steps:** 0
-- **Answer:** Skipped — empty input
-- **Notes:** Empty input handled gracefully
+### ✅ Q20: carlos sainz previous teams, what team does he currently race for 2026?
+- **Category:** multi_tool
+- **Tools Used:** ['web_search']
+- **Steps:** 1
+- **Answer:** Carlos Sainz has previously driven for Toro Rosso, Renault, McLaren, and Ferrari. He currently races for Williams in 2026.
+- **Notes:** Tool: ✅ (expected ['search_docs', 'web_search'], got ['web_search']), Keyword: ✅
 
 ## Failure Analysis
 

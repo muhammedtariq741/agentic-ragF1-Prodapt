@@ -60,9 +60,9 @@
     },
     {
       "id": 9,
-      "question": "How did McLaren perform in the 2024 constructors standings, and what was their development strategy?",
-      "expected_tools": ["query_data", "search_docs"],
-      "expected_answer_contains": "McLaren",
+      "question": "why was brazil 2024 considered the best drive and win for verstappen?",
+      "expected_tools": ["search_docs", "web_search"],
+      "expected_answer_contains": "Verstappen",
       "category": "multi_tool"
     },
     {
@@ -84,6 +84,13 @@
       "question": "How many wins did Ferrari get in 2025 and what's their current 2026 form?",
       "expected_tools": ["query_data", "web_search"],
       "expected_answer_contains": "Ferrari",
+      "category": "multi_tool"
+    },
+    {
+      "id": 20,
+      "question": "carlos sainz previous teams, what team does he currently race for 2026?",
+      "expected_tools": ["search_docs", "web_search"],
+      "expected_answer_contains": "Williams",
       "category": "multi_tool"
     }
   ],
@@ -130,12 +137,6 @@
       "id": 19,
       "question": "Tell me about the 2024 Monaco Grand Prix strategy AND who won AND what the latest news is about that circuit.",
       "expected_behavior": "Uses multiple tools sequentially, synthesizes a combined answer",
-      "category": "edge_case"
-    },
-    {
-      "id": 20,
-      "question": "",
-      "expected_behavior": "Handle empty input gracefully without crashing",
       "category": "edge_case"
     }
   ]
